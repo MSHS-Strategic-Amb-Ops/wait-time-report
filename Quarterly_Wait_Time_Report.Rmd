@@ -226,8 +226,8 @@ not_all_na <- function(x) all(!is.na(x)) # Exclude columns with All NAs
 inc_sites <- c("NETWORK","MSM","MSH-MSDFP","MSW","MSBI","MSUS","MSH- AMBULATORY CARE","MSDD")
 
 # Import in scheduling data 
-scheduling_data_raw <- as.data.frame(read_rds(file.choose()))
-# scheduling_data_raw <- as.data.frame(readRDS("/nfs/data/Applications/Ambulatory/Data_Updated/historical_data.rds"))
+# scheduling_data_raw <- as.data.frame(read_rds(file.choose()))
+scheduling_data_raw <- as.data.frame(readRDS("/nfs/data/Applications/Ambulatory/Data_Updated/historical_data.rds"))
 
 scheduling_data_raw <- scheduling_data_raw %>%
   mutate(Appt.WeekNum = lubridate::epiweek(Appt.DateYear),
@@ -244,8 +244,8 @@ scheduling_data_raw <- scheduling_data_raw %>% filter(Campus %in% inc_sites)
 
 
 # Import Department Zip Code Data
-dept_zip_code_ref <- read_csv(file.choose())
-# dept_zip_code_ref <- read_csv("/nfs/data/Applications/Ambulatory/Department_Zip_Code.csv")
+# dept_zip_code_ref <- read_csv(file.choose())
+dept_zip_code_ref <- read_csv("/nfs/data/Applications/Ambulatory/Department_Zip_Code.csv")
 ```
 
 
