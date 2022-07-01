@@ -824,7 +824,7 @@ dept_list <- c("Urology","Gastroenterology","Cardiology","Internal Medicine","EN
   # image <- readPNG("/nfs/data/Applications/Ambulatory/vol_heat_map.png")
   
   # img.path <- "/nfs/data/Applications/Ambulatory/"
-  ppt_temp <- ph_with(ppt_temp, value = external_img(src = "vol_heat_map.png", height = 1.06/2, width = 1.39/2),
+  ppt_temp <- ph_with(ppt_temp, value = external_img(src = "/nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.png", height = 1.06/2, width = 1.39/2),
                           location = ph_location_label(ph_label = "Table Placeholder 9"))
   
   ### Key Takeaways 
