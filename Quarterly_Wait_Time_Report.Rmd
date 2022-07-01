@@ -246,6 +246,7 @@ scheduling_data_raw <- scheduling_data_raw %>% filter(Campus %in% inc_sites)
 # Import Department Zip Code Data
 # dept_zip_code_ref <- read_csv(file.choose())
 dept_zip_code_ref <- read_csv("/nfs/data/Applications/Ambulatory/Department_Zip_Code.csv")
+
 ```
 
 
@@ -579,7 +580,8 @@ dept_heat_map_function <- function(department){
       
       # Save as a png
       saveWidget(map, "/nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.html", selfcontained = FALSE)
-      webshot("/nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.html", file = "/nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.png", cliprect = "viewport")
+      webshot("/nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.html", 
+              file = "file:///nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.png", cliprect = "viewport")
               #  c(0, 200, 1000, 1400)
       
       # saveWidget(map, "/nfs/data/Applications/Ambulatory/vol_heat_map.html", selfcontained = FALSE)
