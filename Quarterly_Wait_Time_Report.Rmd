@@ -226,8 +226,8 @@ not_all_na <- function(x) all(!is.na(x)) # Exclude columns with All NAs
 inc_sites <- c("NETWORK","MSM","MSH-MSDFP","MSW","MSBI","MSUS","MSH- AMBULATORY CARE","MSDD")
 
 # Import in scheduling data 
-scheduling_data_raw <- as.data.frame(read_rds(file.choose()))
-# scheduling_data_raw <- as.data.frame(readRDS("/nfs/data/Applications/Ambulatory/Data/historical_data.rds"))
+# scheduling_data_raw <- as.data.frame(read_rds(file.choose()))
+scheduling_data_raw <- as.data.frame(readRDS("/nfs/data/Applications/Ambulatory/Data_Updated/historical_data.rds"))
 
 scheduling_data_raw <- scheduling_data_raw %>%
   mutate(Appt.WeekNum = lubridate::epiweek(Appt.DateYear),
@@ -244,8 +244,8 @@ scheduling_data_raw <- scheduling_data_raw %>% filter(Campus %in% inc_sites)
 
 
 # Import Department Zip Code Data
-dept_zip_code_ref <- read_csv("Department_Zip_Code.csv")
-
+# dept_zip_code_ref <- read_csv("Department_Zip_Code.csv")
+dept_zip_code_ref <- read_csv("/nfs/data/Applications/Ambulatory/Department_Zip_Code.csv")
 ```
 
 
@@ -255,12 +255,12 @@ dept_zip_code_ref <- read_csv("Department_Zip_Code.csv")
 # reporting_year <- dlgInput("Enter Reporting Year")$res
 # reporting_quarter <- toupper(dlgInput("Enter Reporting Year")$res)
 
-reporting_date <- max((scheduling_data_raw %>% filter(Appt.Status == "Arrived") %>% filter(Appt.DateYear <= Sys.Date()))$Appt.DateYear)
+reporting_date <- max((scheduling_data_raw %>% filter(Appt.Status == "Arrived") %>% filter(Appt.DateYear <= max(Appt.Made.DateYear)))$Appt.DateYear)
 reporting_year <- format(as.Date(reporting_date, format="%m/%d/%Y"), "%Y") ## Create year column
 reporting_quarter <- quarters(as.Date(reporting_date, format="%m/%d/%Y")) ## Create year column
 reporting_YearQtr <- as.yearqtr(reporting_date)
 
-data_quarters <- sort(unique((scheduling_data_raw %>% filter(Appt.Status == "Arrived") %>% filter(Appt.DateYear < Sys.Date()))$Appt.YearQtr))
+data_quarters <- sort(unique((scheduling_data_raw %>% filter(Appt.Status == "Arrived") %>% filter(Appt.DateYear <= max(Appt.Made.DateYear)))$Appt.YearQtr))
 
 # Specify campuses to include
 inc_sites <- c("NETWORK","MSM","MSH-MSDFP","MSW","MSBI","MSUS","MSH- AMBULATORY CARE","MSDD")
@@ -272,7 +272,7 @@ inc_sites <- c("NETWORK","MSM","MSH-MSDFP","MSW","MSBI","MSUS","MSH- AMBULATORY 
 
 monthly_vol <- scheduling_data_raw %>%
   filter(Appt.Status == "Arrived") %>%
-  filter(Appt.DateYear <= Sys.Date()) %>%
+  filter(Appt.DateYear <= max(Appt.Made.DateYear)) %>%
   mutate(Appt.MonNum = as.numeric(strftime(Appt.DateYear, format = "%m")),
          Appt.Month = strftime(Appt.DateYear, format = "%b")) %>%
   group_by(Campus, Campus.Specialty, Department, Appt.YearQtr, Appt.MonNum, Appt.Month, Visit.Method) %>%
@@ -578,8 +578,8 @@ dept_heat_map_function <- function(department){
        
       
       # Save as a png
-      saveWidget(map, "vol_heat_map.html", selfcontained = FALSE)
-      webshot("vol_heat_map.html", file = "vol_heat_map.png", cliprect = "viewport")
+      saveWidget(map, "/nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.html", selfcontained = FALSE)
+      webshot("/nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.html", file = "/nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.png", cliprect = "viewport")
               #  c(0, 200, 1000, 1400)
       
       # saveWidget(map, "/nfs/data/Applications/Ambulatory/vol_heat_map.html", selfcontained = FALSE)
@@ -907,8 +907,8 @@ dept_list <- c("Urology","Gastroenterology","Cardiology","Internal Medicine","EN
   
 
   # Compiled Slide Output --------------------------------------------------------
-  print(ppt_temp, target=paste0(reporting_YearQtr,"_Wait Time Report.pptx"))
-  # print(ppt_temp, target=paste0("/nfs/data/Applications/Ambulatory/",reporting_YearQtr,"_Wait Time Report.pptx"))
+  # print(ppt_temp, target=paste0(reporting_YearQtr,"_Wait Time Report.pptx"))
+  print(ppt_temp, target=paste0("/SharedDrive/deans/Presidents/SixSigma/Individual Folders/Current Employees/Engineers/So Youn Kweon/Quarterly_Reports/",reporting_YearQtr,"_Wait Time Report.pptx"))
   
 ```
 
