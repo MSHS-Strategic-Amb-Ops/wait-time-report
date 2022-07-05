@@ -6,9 +6,10 @@ output:
 ---
 
 ```{r Load Packages, echo = FALSE, warning = FALSE, message = FALSE}
-memory.limit(size = 8000000)
+
 # Load packages -----------------------------------------------------------------------------------
 suppressMessages({
+  memory.limit(size = 10000000)
   library(readxl)
   library(writexl)
   library(plyr)
@@ -226,8 +227,8 @@ not_all_na <- function(x) all(!is.na(x)) # Exclude columns with All NAs
 inc_sites <- c("NETWORK","MSM","MSH-MSDFP","MSW","MSBI","MSUS","MSH- AMBULATORY CARE","MSDD")
 
 # Import in scheduling data 
-# scheduling_data_raw <- as.data.frame(read_rds(file.choose()))
-scheduling_data_raw <- as.data.frame(readRDS("/nfs/data/Applications/Ambulatory/Data_Updated/historical_data.rds"))
+scheduling_data_raw <- as.data.frame(read_rds(file.choose()))
+# scheduling_data_raw <- as.data.frame(readRDS("/nfs/data/Applications/Ambulatory/Data_Updated/historical_data.rds"))
 
 scheduling_data_raw <- scheduling_data_raw %>%
   mutate(Appt.WeekNum = lubridate::epiweek(Appt.DateYear),
@@ -244,8 +245,8 @@ scheduling_data_raw <- scheduling_data_raw %>% filter(Campus %in% inc_sites)
 
 
 # Import Department Zip Code Data
-# dept_zip_code_ref <- read_csv(file.choose())
-dept_zip_code_ref <- read_csv("/nfs/data/Applications/Ambulatory/Department_Zip_Code.csv")
+dept_zip_code_ref <- read_csv("C:/Users/kweons01/Desktop/Strategic Initiatives - So Youn/Github/server-upload/Department_Zip_Code.csv")
+# dept_zip_code_ref <- read_csv("/nfs/data/Applications/Ambulatory/Department_Zip_Code.csv")
 
 ```
 
@@ -256,27 +257,51 @@ dept_zip_code_ref <- read_csv("/nfs/data/Applications/Ambulatory/Department_Zip_
 # reporting_year <- dlgInput("Enter Reporting Year")$res
 # reporting_quarter <- toupper(dlgInput("Enter Reporting Year")$res)
 
+reporting_specialties <- c("Orthopedics")
+reporting_start <- "2022-01-01"
+reporting_end <- "2022-05-31"
+reporting_months <- c(
+                      "Jan",
+                      "Feb",
+                      "Mar",
+                      "Apr",
+                      "May",
+                      "Jun",
+                      "Jul",
+                      "Aug",
+                      "Sep",
+                      "Oct",
+                      "Nov",
+                      "Dec"
+                      )
+
+reporting_months <- as.vector(lapply(seq.Date(from = as.Date(reporting_start), to = as.Date(reporting_end), by = "month"), function(x)format(as.Date(x), "%b")))
+reporting_year <- format(as.Date(reporting_end, format="%m/%d/%Y"), "%Y") ## Create year column
+
+
 reporting_date <- max((scheduling_data_raw %>% filter(Appt.Status == "Arrived") %>% filter(Appt.DateYear <= max(Appt.Made.DateYear)))$Appt.DateYear)
-reporting_year <- format(as.Date(reporting_date, format="%m/%d/%Y"), "%Y") ## Create year column
 reporting_quarter <- quarters(as.Date(reporting_date, format="%m/%d/%Y")) ## Create year column
 reporting_YearQtr <- as.yearqtr(reporting_date)
 
 data_quarters <- sort(unique((scheduling_data_raw %>% filter(Appt.Status == "Arrived") %>% filter(Appt.DateYear <= max(Appt.Made.DateYear)))$Appt.YearQtr))
 
-# Specify campuses to include
-inc_sites <- c("NETWORK","MSM","MSH-MSDFP","MSW","MSBI","MSUS","MSH- AMBULATORY CARE","MSDD")
+```
+
+```{r Data in Scope Filtering, echo = FALSE, warning = FALSE, message = FALSE}
+
+scheduling_data <- scheduling_data_raw %>%
+  filter(Campus.Specialty %in% reporting_specialties) %>%
+  filter(Appt.Month %in% reporting_months | Appt.Made.MonthYear %in% reporting_months)
 
 ```
 
 
 ```{r Monthly Volume Data, echo = FALSE, warning = FALSE, message = FALSE}
 
-monthly_vol <- scheduling_data_raw %>%
+monthly_vol <- scheduling_data %>%
   filter(Appt.Status == "Arrived") %>%
-  filter(Appt.DateYear <= max(Appt.Made.DateYear)) %>%
-  mutate(Appt.MonNum = as.numeric(strftime(Appt.DateYear, format = "%m")),
-         Appt.Month = strftime(Appt.DateYear, format = "%b")) %>%
-  group_by(Campus, Campus.Specialty, Department, Appt.YearQtr, Appt.MonNum, Appt.Month, Visit.Method) %>%
+  filter(Appt.DateYear <= reporting_end) %>%
+  group_by(Campus, Campus.Specialty, Appt.MonthYear, Appt.Year, Appt.Month, Visit.Method) %>%
   summarise(monthly_vol = n()) 
 
 # # Merge with Rad Onc and Radiology Data
@@ -287,11 +312,11 @@ monthly_vol <- monthly_vol %>%
   pivot_wider(
     names_from = Visit.Method, 
     values_from = monthly_vol,
-    values_fill=list(monthly_vol=0)
+    values_fill=0
   ) %>%
   mutate(Total = sum(`IN PERSON`, TELEHEALTH)) %>%
   pivot_longer(
-    7:9,
+    6:8,
     names_to = "Visit.Method",
     values_to = "monthly_vol"
   )
@@ -301,47 +326,50 @@ monthly_vol <- monthly_vol %>%
 
 ```
 
-
 ```{r Department Zip Code Data, echo = FALSE, warning = FALSE, message = FALSE}
 
 # Volume by Department Zip Code
-vol_zip_code <- scheduling_data_raw %>%
+vol_zip_code <- scheduling_data %>%
   filter(Appt.Status == "Arrived") %>%
-  filter(Appt.DateYear <= max(scheduling_data_raw$Appt.Made.DateYear))
+  filter(Appt.DateYear >= reporting_start & Appt.DateYear <= reporting_end)
 
 vol_zip_code$dept_zip_code <- dept_zip_code_ref$`Address Zip Code`[match(vol_zip_code$Department, dept_zip_code_ref$`Department Name`)] 
 coordinates <- geocode_zip(vol_zip_code$dept_zip_code)
 vol_zip_code <- merge(vol_zip_code, coordinates, by.x = c("dept_zip_code"), by.y = c("zipcode"), all.x = TRUE)
 
 vol_zip_code <- vol_zip_code %>%
-  group_by(Campus.Specialty, Appt.YearQtr, dept_zip_code, lat, lng) %>%
+  group_by(Campus.Specialty, dept_zip_code, lat, lng) %>%
   summarise(total_vol = n()) %>%
   mutate(dept_zip_code=factor(dept_zip_code, unique(dept_zip_code)))
     
 ```
 
+
 ```{r Time to Appointment Data, echo = FALSE, warning = FALSE, message = FALSE}
 
 # Wait Time Distribution by New vs. Established 
-wait_time_dist <- scheduling_data_raw %>%
+wait_time_dist <- scheduling_data %>%
+  filter(Appt.Made.DateYear <= reporting_end) %>%
   filter(Wait.Time >= 0) %>%
   mutate(group = case_when(Wait.Time >= 0 & Wait.Time <=7 ~ "0-7",
                            Wait.Time >7 & Wait.Time <=14 ~ "8-14",
                            Wait.Time >14 & Wait.Time <=30 ~ "15-30",
                            TRUE ~ ">30")) %>%
-  group_by(Campus.Specialty, Appt.Made.YearQtr, New.PT3, Visit.Method, group) %>%
+  group_by(Campus.Specialty, Appt.Made.MonthYear, Appt.Year, Appt.Month, New.PT3, Visit.Method, group) %>%
   summarise(total = n())
 
 
 # Wait Time Distribution by Site
-wait_time_mshs <- scheduling_data_raw %>%
-  filter(Wait.Time >= 0) %>%
-  group_by(Campus.Specialty, Appt.Made.YearQtr, New.PT3) %>%
-  summarise(med_wait = median(Wait.Time, na.rm = TRUE)) 
+# wait_time_mshs <- scheduling_data %>%
+#   filter(Appt.Made.DateYear <= reporting_end) %>%
+#   filter(Wait.Time >= 0) %>%
+#   group_by(Campus.Specialty, Appt.Made.MonthYear, Appt.Year, Appt.Month, New.PT3) %>%
+#   summarise(med_wait = median(Wait.Time, na.rm = TRUE)) 
 
-wait_time_site <- scheduling_data_raw %>%
+wait_time_site <- scheduling_data %>%
+  filter(Appt.Made.DateYear <= reporting_end) %>%
   filter(Wait.Time >= 0) %>%
-  group_by(Campus.Specialty, Appt.Made.YearQtr, Campus, New.PT3) %>%
+  group_by(Campus.Specialty, Appt.Made.MonthYear, Appt.Year, Appt.Month, Campus, New.PT3) %>%
   summarise(med_wait = median(Wait.Time, na.rm = TRUE))
 
 ```
@@ -349,7 +377,7 @@ wait_time_site <- scheduling_data_raw %>%
 
 ```{r Quarterly Volume Graph Output, echo = FALSE, warning = FALSE, message = FALSE}
 
-dept_quarterly_vol_function <- function(department){
+dept_monthly_vol_function <- function(department){
   
   # department <- i
   dept_vol <- monthly_vol %>%
@@ -579,9 +607,9 @@ dept_heat_map_function <- function(department){
        
       
       # Save as a png
-      saveWidget(map, "/nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.html", selfcontained = FALSE)
-      webshot("/nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.html", 
-              file = "file:///nfs/data/Applications/Ambulatory/Quarterly_Data/vol_heat_map.png", cliprect = "viewport")
+      saveWidget(map, "vol_heat_map.html", selfcontained = FALSE)
+      webshot("vol_heat_map.html", 
+              file = "vol_heat_map.png", cliprect = "viewport")
               #  c(0, 200, 1000, 1400)
       
       # saveWidget(map, "/nfs/data/Applications/Ambulatory/vol_heat_map.html", selfcontained = FALSE)
@@ -826,7 +854,6 @@ dept_list <- c("Urology","Gastroenterology","Cardiology","Internal Medicine","EN
   # image <- readPNG("/nfs/data/Applications/Ambulatory/vol_heat_map.png")
   
   # img.path <- "/nfs/data/Applications/Ambulatory/"
-  setwd("/nfs/data/Applications/Ambulatory/Quarterly_Data")
   ppt_temp <- ph_with(ppt_temp, value = external_img(src = "vol_heat_map.png", height = 1.06/2, width = 1.39/2),
                           location = ph_location_label(ph_label = "Table Placeholder 9"))
   
@@ -910,8 +937,8 @@ dept_list <- c("Urology","Gastroenterology","Cardiology","Internal Medicine","EN
   
 
   # Compiled Slide Output --------------------------------------------------------
-  # print(ppt_temp, target=paste0(reporting_YearQtr,"_Wait Time Report.pptx"))
-  print(ppt_temp, target=paste0("/SharedDrive/deans/Presidents/SixSigma/Individual Folders/Current Employees/Engineers/So Youn Kweon/Quarterly_Reports/",reporting_YearQtr,"_Wait Time Report.pptx"))
+  print(ppt_temp, target=paste0(reporting_YearQtr,"_Wait Time Report.pptx"))
+  # print(ppt_temp, target=paste0("/SharedDrive/deans/Presidents/SixSigma/Individual Folders/Current Employees/Engineers/So Youn Kweon/Quarterly_Reports/",reporting_YearQtr,"_Wait Time Report.pptx"))
   
 ```
 
