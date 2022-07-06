@@ -260,30 +260,18 @@ dept_zip_code_ref <- read_csv("C:/Users/kweons01/Desktop/Strategic Initiatives -
 reporting_specialties <- c("Orthopedics")
 reporting_start <- "2022-01-01"
 reporting_end <- "2022-05-31"
-reporting_months <- c(
-                      "Jan",
-                      "Feb",
-                      "Mar",
-                      "Apr",
-                      "May",
-                      "Jun",
-                      "Jul",
-                      "Aug",
-                      "Sep",
-                      "Oct",
-                      "Nov",
-                      "Dec"
-                      )
 
-reporting_months <- as.vector(lapply(seq.Date(from = as.Date(reporting_start), to = as.Date(reporting_end), by = "month"), function(x)format(as.Date(x), "%b")))
-reporting_year <- format(as.Date(reporting_end, format="%m/%d/%Y"), "%Y") ## Create year column
+reporting_months <- as.vector(c(lapply(seq.Date(from = as.Date(reporting_start), to = as.Date(reporting_end), by = "month"), 
+                                     function(x)format(as.Date(as.yearmon(format(as.Date(x), "%Y-%m")) - 1), "%Y-%m")),
+                                lapply(seq.Date(from = as.Date(reporting_start), to = as.Date(reporting_end), by = "month"), 
+                                     function(x)format(as.Date(x), "%Y-%m"))))
+
+reporting_current <- as.vector(lapply(seq.Date(from = as.Date(reporting_start), to = as.Date(reporting_end), by = "month"), 
+                                     function(x)format(as.Date(x), "%Y-%m")))
 
 
-reporting_date <- max((scheduling_data_raw %>% filter(Appt.Status == "Arrived") %>% filter(Appt.DateYear <= max(Appt.Made.DateYear)))$Appt.DateYear)
-reporting_quarter <- quarters(as.Date(reporting_date, format="%m/%d/%Y")) ## Create year column
-reporting_YearQtr <- as.yearqtr(reporting_date)
-
-data_quarters <- sort(unique((scheduling_data_raw %>% filter(Appt.Status == "Arrived") %>% filter(Appt.DateYear <= max(Appt.Made.DateYear)))$Appt.YearQtr))
+reporting_prior <- as.vector(lapply(seq.Date(from = as.Date(reporting_start), to = as.Date(reporting_end), by = "month"), 
+                                     function(x)format(as.Date(as.yearmon(format(as.Date(x), "%Y-%m")) - 1), "%Y-%m")))
 
 ```
 
@@ -291,7 +279,10 @@ data_quarters <- sort(unique((scheduling_data_raw %>% filter(Appt.Status == "Arr
 
 scheduling_data <- scheduling_data_raw %>%
   filter(Campus.Specialty %in% reporting_specialties) %>%
-  filter(Appt.Month %in% reporting_months | Appt.Made.MonthYear %in% reporting_months)
+  filter(Appt.MonthYear %in% reporting_months)
+
+scheduling_data_raw <- scheduling_data_raw %>%
+  filter(Campus.Specialty %in% reporting_specialties)
 
 ```
 
@@ -319,12 +310,16 @@ monthly_vol <- monthly_vol %>%
     6:8,
     names_to = "Visit.Method",
     values_to = "monthly_vol"
-  )
+  ) %>%
+  mutate(group = ifelse(Appt.MonthYear %in% reporting_current, "Current","Prior"))
+  
+  monthly_vol$group = factor(monthly_vol$group, levels=c('Prior','Current'))
 
 # monthly_vol <- monthly_vol %>%
 #   filter(Appt.Year >= as.numeric(todays_year)-1) 
 
 ```
+
 
 ```{r Department Zip Code Data, echo = FALSE, warning = FALSE, message = FALSE}
 
@@ -349,13 +344,13 @@ vol_zip_code <- vol_zip_code %>%
 
 # Wait Time Distribution by New vs. Established 
 wait_time_dist <- scheduling_data %>%
-  filter(Appt.Made.DateYear <= reporting_end) %>%
+  filter(Appt.Made.DateYear >= reporting_start & Appt.Made.DateYear <= reporting_end) %>%
   filter(Wait.Time >= 0) %>%
   mutate(group = case_when(Wait.Time >= 0 & Wait.Time <=7 ~ "0-7",
                            Wait.Time >7 & Wait.Time <=14 ~ "8-14",
                            Wait.Time >14 & Wait.Time <=30 ~ "15-30",
                            TRUE ~ ">30")) %>%
-  group_by(Campus.Specialty, Appt.Made.MonthYear, Appt.Year, Appt.Month, New.PT3, Visit.Method, group) %>%
+  group_by(Campus.Specialty, New.PT3, Visit.Method, group) %>%
   summarise(total = n())
 
 
@@ -367,40 +362,80 @@ wait_time_dist <- scheduling_data %>%
 #   summarise(med_wait = median(Wait.Time, na.rm = TRUE)) 
 
 wait_time_site <- scheduling_data %>%
-  filter(Appt.Made.DateYear <= reporting_end) %>%
+  filter(Appt.Made.DateYear >= reporting_start & Appt.Made.DateYear <= reporting_end) %>%
   filter(Wait.Time >= 0) %>%
-  group_by(Campus.Specialty, Appt.Made.MonthYear, Appt.Year, Appt.Month, Campus, New.PT3) %>%
+  group_by(Campus.Specialty, Campus, New.PT3) %>%
   summarise(med_wait = median(Wait.Time, na.rm = TRUE))
 
 ```
 
 
 ```{r Quarterly Volume Graph Output, echo = FALSE, warning = FALSE, message = FALSE}
-
 dept_monthly_vol_function <- function(department){
   
-  # department <- i
+  # department <- "Orthopedicts"
+  
+  # # Bar + line graphs -----------------------------------------------------------
+  # dept_vol <- monthly_vol %>%
+  #   filter(Campus.Specialty == department) %>%
+  #   group_by(Campus.Specialty, Appt.MonthYear, Appt.Year, Appt.Month, Visit.Method) %>%
+  #   dplyr::summarise(monthly_vol = sum(monthly_vol)) %>%
+  #   pivot_wider(names_from = Visit.Method,
+  #               values_from = monthly_vol,
+  #               values_fill = 0) %>%
+  #   mutate(tele_perc = round(TELEHEALTH / Total,2),
+  #          inPerson_perc = round(`IN PERSON` / Total,2))
+  #   
+  #  
+  # ggplot(dept_vol)  + 
+  #   facet_grid(cols = vars(Appt.Year), scales = "free_x") +
+  #   geom_bar(aes(x=Appt.MonthYear, y=Total),stat="identity", fill="#212070",colour="#212070") +
+  #   geom_line(aes(x=Appt.MonthYear, y=inPerson_perc*max(dept_vol$Total), group=1),stat="identity",color="#d80b8c",size=1) +
+  #   geom_point(aes(x=Appt.MonthYear, y=inPerson_perc*max(dept_vol$Total), group=1),stat="identity",color="#d80b8c",size=2) +
+  #   geom_line(aes(x=Appt.MonthYear, y=tele_perc*max(dept_vol$Total), group=1),stat="identity",color="#5cd3ff",size=1) +
+  #   geom_point(aes(x=Appt.MonthYear, y=tele_perc*max(dept_vol$Total), group=1),stat="identity",color="#5cd3ff",size=2) +
+  #   labs(title= "Monthly Visit Volume: Current vs. Prior Year",
+  #        subtitle = department,
+  #        x=NULL, y="Total Visits") +
+  #   scale_y_continuous(sec.axis=sec_axis(~./max(dept_vol$Total),name="Percentage of Students Enrolled", labels=scales::percent))+
+  #   geom_text(aes(x=Appt.MonthYear, y=Total, label=prettyNum(Total, big.mark = ',')), color="white",
+  #               size=3, fontface="bold", position = position_stack(vjust = 0.5))+
+  #   theme_bw()+
+  #   theme(plot.title = element_text(hjust=0.5, face = "bold", size = 14),
+  #           plot.subtitle = element_text(hjust=0.5, size = 12, face = "italic"),
+  #           legend.position = "bottom",
+  #           legend.text = element_text(size="8"),
+  #           legend.direction = "horizontal",
+  #           legend.title = element_blank(),
+  #           axis.title = element_blank(),
+  #           axis.text.y = element_text(size="10"),
+  #           axis.text.x = element_text(size="10"),
+  #           axis.title.x = element_blank(),
+  #           axis.line = element_line(size = 0.3, colour = "black"))
+  # 
+  
+  
+  
+  
+  # Stacked bar graph ----------------------------------------------------------
   dept_vol <- monthly_vol %>%
     filter(Campus.Specialty == department) %>%
     filter(Visit.Method != "Total") %>%
-    filter(Appt.YearQtr %in% tail(data_quarters,5)) %>%
-    mutate(Appt.YearQtr = as.character(Appt.YearQtr)) %>%
-    group_by(Campus.Specialty, Appt.YearQtr, Visit.Method) %>%
-    summarise(quarterly_vol = sum(monthly_vol)) %>%
-    mutate(perc = percent(quarterly_vol/sum(quarterly_vol),0))
+    group_by(Campus.Specialty, Appt.MonthYear, Appt.Year, Appt.Month, Visit.Method, group) %>%
+    summarise(monthly_vol = sum(monthly_vol)) %>%
+    mutate(perc = percent(monthly_vol/sum(monthly_vol),0)) 
   
-
-  ggplot(dept_vol, aes(x= Appt.YearQtr,
-                       y=quarterly_vol, group=Visit.Method, fill=Visit.Method))+
-    geom_bar(position="stack",stat="identity", width=0.7)+
-    facet_grid(.~Appt.YearQtr, scales = "free", space = "free_x") + 
+  ggplot(dept_vol, aes(x= Appt.MonthYear,
+                       y=monthly_vol, group=Visit.Method, fill=Visit.Method))+
+    geom_bar(position="stack",stat="identity")+
+    facet_grid(.~group, scales = "free_x", space = "free_x") + 
     scale_fill_manual(values=c("#212070","#d80b8c","#00aeef","#7f7f7f","#ffc000","#7030a0","#5753d0","#5cd3ff"))+
-    scale_y_continuous(limits=c(0, max((dept_vol %>% group_by(Appt.YearQtr) %>% summarise(total = sum(quarterly_vol)))$total)*1.1), 
+    scale_y_continuous(limits=c(0, max((dept_vol %>% group_by(Appt.MonthYear) %>% summarise(total = sum(monthly_vol)))$total)*1.1), 
                        labels = scales::number_format(accuracy = 1),
                        expand = c(0,0))+
-    labs(title = "Ambulatory Quarterly Visit Volume",
+    labs(title = "Monthly Visit Volume: Current vs. Prior Year",
          subtitle = department,
-         x = NULL, y = NULL, fill = "Site")+
+         x = NULL, y = NULL)+
     theme_bw()+
     theme(plot.title = element_text(hjust=0.5, face = "bold", size = 14),
             plot.subtitle = element_text(hjust=0.5, size = 12, face = "italic"),
@@ -410,23 +445,16 @@ dept_monthly_vol_function <- function(department){
             legend.title = element_blank(),
             axis.title = element_blank(),
             axis.text.y = element_text(size="10"),
-            axis.text.x = element_blank(),
+            axis.text.x = element_text(size="10"),
             axis.title.x = element_blank(),
             axis.line = element_line(size = 0.3, colour = "black"))+
-    geom_text(aes(label=paste0(prettyNum(quarterly_vol, big.mark = ','),"\n","(",perc,")")), color="white", 
+    geom_text(aes(label=paste0(prettyNum(monthly_vol, big.mark = ','),"\n","(",perc,")")), color="white", 
                 size=3, fontface="bold", position = position_stack(vjust = 0.5))+
-    stat_summary(fun.y = sum, vjust = -1, aes(label=ifelse(..y.. == 0,"",prettyNum(..y.., big.mark = ',')), group = Appt.YearQtr), geom="text", color="black", 
+    stat_summary(fun.y = sum, vjust = -1, aes(label=ifelse(..y.. == 0,"",prettyNum(..y.., big.mark = ',')), group = Appt.MonthYear), geom="text", color="black", 
                  size=3.5)+
     guides(fill = guide_legend(nrow = 1))
-  
-  
-  
-  
-  
-  
-  
-  
-  
+
+
   # monthOptions <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
   # 
   # ggplot(dept_vol, aes(x= factor(Appt.Month, levels = monthOptions),
@@ -466,59 +494,38 @@ dept_monthly_vol_function <- function(department){
 
 dept_monthly_vol_takeaway <- function(department){
   
-  qrt_vol_var <- monthly_vol %>%
+  total_vol <- monthly_vol %>%
     filter(Campus.Specialty == department) %>%
-    filter(Visit.Method == "Total") %>%
-    filter(Appt.YearQtr %in% c(data_quarters[length(data_quarters)], data_quarters[length(data_quarters)-1], data_quarters[length(data_quarters)-4])) %>%
-    mutate(Appt.YearQtr = as.character(Appt.YearQtr)) %>%
-    group_by(Appt.YearQtr) %>%
-    summarise(total = sum(monthly_vol)) %>%
-    pivot_wider(names_from = Appt.YearQtr,
-                values_from = total) %>%
-    mutate(var_last_qrt = percent((.[[1]]/.[[2]])-1,0),
-           var_last_yr = percent((.[[1]]/.[[3]])-1,0))
-  
-  qrt_vol <- as.character(prettyNum(qrt_vol_var[[1]], big.mark = ','))
-  var_last_qrt <- as.character(qrt_vol_var[[4]])
-  var_last_yr <- as.character(qrt_vol_var[[5]])
-  
-  avg_monthly <- monthly_vol %>%
-    filter(Campus.Specialty == department) %>%
-    filter(Visit.Method == "Total") %>%
-    filter(Appt.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
-    group_by(Campus.Specialty, Appt.Month) %>%
-    summarise(total = sum(monthly_vol)) 
-  
-  avg_month <- as.character(prettyNum(round(mean(avg_monthly$total)), big.mark = ','))
-  
-  visit_method_vol <- monthly_vol %>%
-    filter(Campus.Specialty == department) %>%
-    filter(Appt.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
-    filter(Visit.Method != "Total") %>%
-    group_by(Campus.Specialty, Visit.Method) %>%
-    summarise(total = sum(monthly_vol)) %>%
-    ungroup() %>%
-    group_by(Campus.Specialty) %>%
-    mutate(perc = percent(total/sum(total),0))
-  
-  in_person <- as.character(visit_method_vol$perc[which(visit_method_vol$Visit.Method == "IN PERSON")])
-  
+    group_by(group, Campus.Specialty, Appt.MonthYear, Visit.Method) %>%
+    dplyr::summarise(monthly_vol = sum(monthly_vol)) %>%
+    pivot_wider(names_from = Visit.Method,
+                values_from = monthly_vol) 
+    
   site_vol <- monthly_vol %>%
     filter(Campus.Specialty == department) %>%
-    filter(Visit.Method == "Total") %>%
-    filter(Appt.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
-    mutate(Appt.YearQtr = as.character(Appt.YearQtr)) %>%
-    group_by(Campus.Specialty, Appt.YearQtr, Campus) %>%
-    summarise(monthly_vol = sum(monthly_vol)) %>%
-    group_by(Campus.Specialty, Appt.YearQtr) %>%
-    mutate(perc = percent(monthly_vol/sum(monthly_vol),0)) %>%
-    filter(perc == max(perc))
+    filter(group == "Current") %>%
+    group_by(Campus, Visit.Method) %>%
+    dplyr::summarise(monthly_vol = sum(monthly_vol)) %>%
+    pivot_wider(names_from = Visit.Method,
+                values_from = monthly_vol) %>%
+    ungroup() %>%
+    mutate(perc = round(Total/sum(Total),2))
   
-  max_vol <- as.character(prettyNum(site_vol$monthly_vol, big.mark = ','))
-  max_vol_perc <- as.character(site_vol$perc, big.mark = ',')
-  max_site <- as.character(site_vol$Campus)
+  current_vol_total <- sum((total_vol %>% filter(group == "Current"))$Total)
+  current_avg_month <- round(mean((total_vol %>% filter(group == "Current"))$Total))
+  current_inPerson_perc <- round(sum((total_vol %>% filter(group == "Current"))$`IN PERSON`)/
+    sum((total_vol %>% filter(group == "Current"))$Total),2)
+  prior_vol_total <- sum((total_vol %>% filter(group == "Prior"))$Total)
+  perc_chg <- round((current_vol_total - prior_vol_total)/prior_vol_total,2)
+  max_site <- site_vol$Campus[which.max(site_vol$perc)]
+  max_value <- max(site_vol$Total)
+  max_perc <- max(site_vol$perc)
   
-  key_list <- list(in_person, qrt_vol, avg_month, var_last_qrt, var_last_yr, max_site, max_vol, max_vol_perc)
+  
+  key_list <- list(as.character(prettyNum(current_vol_total, big.mark = ',')), as.character(paste0(current_inPerson_perc*100,"%")), 
+                   as.character(prettyNum(current_avg_month, big.mark = ',')), 
+                   as.character(paste0(perc_chg*100,"%")), max_site, as.character(prettyNum(max_value, big.mark = ',')),
+                   as.character(paste0(max_perc*100,"%")))
   
   return(key_list)
 }
@@ -532,8 +539,7 @@ dept_heat_map_function <- function(department){
   
   # department <- i
   dept_vol_zip_code <- vol_zip_code %>%
-    filter(Campus.Specialty == department) %>%
-    filter(Appt.YearQtr %in% c(data_quarters[length(data_quarters)])) 
+    filter(Campus.Specialty == department) 
   
   # Create a color palette with handmade bins.
       mybins <- round(seq(0 , round_any(max(dept_vol_zip_code$total_vol), as.numeric(str_count(max(dept_vol_zip_code$total_vol))), f = ceiling) , length.out=5),0)
@@ -629,7 +635,6 @@ overall_time_to_appt_dist_function <- function(department){
   
   wait_time <- wait_time_dist %>%
     filter(Campus.Specialty == department) %>%
-    filter(Appt.Made.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
     group_by(New.PT3, Visit.Method) %>%
     mutate(perc = formattable::percent(total/sum(total),0))
   
@@ -670,12 +675,11 @@ site_time_to_appt_function <- function(department){
   
   wait_time <- wait_time_site %>%
     filter(Campus.Specialty == department) %>%
-    filter(Appt.Made.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
     mutate(med_wait = as.numeric(med_wait)) %>%
     pivot_wider(names_from = New.PT3,
                 values_from = med_wait,
                 values_fill = 0) %>%
-    pivot_longer(4:5,
+    pivot_longer(3:4,
                  names_to = "New.PT3",
                  values_to = "med_wait")
   
@@ -719,7 +723,6 @@ dept_access_takeaway <- function(department){
   
   wait_time_new <- wait_time_dist %>%
     filter(Campus.Specialty == department) %>%
-    filter(Appt.Made.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
     group_by(New.PT3, Visit.Method) %>%
     mutate(perc = formattable::percent(total/sum(total),0))
   
@@ -730,7 +733,6 @@ dept_access_takeaway <- function(department){
   
   dept_med_waitTime <- as.character(as.numeric((scheduling_data_raw %>%
     filter(Campus.Specialty == department) %>%
-    filter(Appt.Made.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
     filter(Wait.Time >= 0) %>%
     filter(New.PT3 == "New") %>%
     summarise(med_waitTime = median(Wait.Time)))$med_waitTime))
@@ -750,21 +752,18 @@ dept_site_monthly_vol_function <- function(department){
   monthOptions <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
    
   # department <- i
-  dept_vol_site <- monthly_vol %>%
+  dept_vol_site <- scheduling_data %>%
     filter(Campus.Specialty == department) %>%
-    filter(Visit.Method == "Total") %>%
-    filter(Appt.YearQtr %in% tail(data_quarters,5)) %>%
-    mutate(Appt.YearQtr = as.character(Appt.YearQtr)) %>%
-    group_by(Campus, Appt.YearQtr, Appt.Month) %>%
-    summarise(monthly_vol = sum(monthly_vol)) %>%
-    arrange(factor(Appt.Month, levels = monthOptions)) %>%
-    arrange(Appt.YearQtr) %>%
+    filter(Appt.Status == "Arrived") %>%
+    filter(Appt.DateYear <= reporting_end) %>%
+    group_by(Campus, Appt.MonthYear) %>%
+    summarise(monthly_vol = n()) %>%
     rename(Site = Campus)
   
   max <- max(dept_vol_site$monthly_vol)
   
   dept_vol_site <- dept_vol_site %>%
-    pivot_wider(names_from = c("Appt.YearQtr","Appt.Month"),
+    pivot_wider(names_from = Appt.MonthYear,
                 values_from = monthly_vol)
 
 colourer <- col_numeric(
@@ -783,8 +782,7 @@ tbl_output <- flextable(dept_vol_site) %>%
     bg = colourer,
     j = ~ . -Site,
     part = "body") %>%
-  vline(j = c(1, 4, 7, 10, 13), border = fp_border_default()) %>%
-  width(j = 1, width = 1) %>%
+  width(j = 1, width = 1.5) %>%
   width(j = 2:length(dept_vol_site), width = 0.6) %>%
 
 
@@ -797,8 +795,8 @@ return(tbl_output)
 
 ```{r Data Sources, echo = FALSE, warning = FALSE, message = FALSE}
 
-arrived_data_source <- paste0("Data Source: Epic EMR - Arrived Visits from ", as.yearmon(as.yearqtr(tail(data_quarters,5)[1])), " to ", as.yearmon(reporting_date))
-scheduled_data_source <- paste0("Data Source: Epic EMR - Scheduled Visits from ", as.yearmon(as.yearqtr(tail(data_quarters,5)[1])), " to ", as.yearmon(reporting_date))
+arrived_data_source <- paste0("Data Source: Epic EMR - Arrived Visits from ", paste0(reporting_prior[1],"-01"), " to ", reporting_end)
+scheduled_data_source <- paste0("Data Source: Epic EMR - Scheduled Visits from ", paste0(reporting_prior[1],"-01"), " to ", reporting_end)
 
 ```
 
@@ -806,7 +804,7 @@ scheduled_data_source <- paste0("Data Source: Epic EMR - Scheduled Visits from "
 ```{r Quarterly Wait Time Report PPT Ouput, echo = FALSE, warning = FALSE, message = FALSE}
 
 # dept_list <- sort(as.vector(unique(monthly_vol$Campus.Specialty)))
-dept_list <- c("Urology","Gastroenterology","Cardiology","Internal Medicine","ENT-Otolaryngology","Neurology","Endocrinology","Orthopedics")
+dept_list <- reporting_specialties
 # Cardiology = "Cardiology" & "Cardiology-Electrophysiology"
 # Primary Care = "Internal Medicine"
   
@@ -840,7 +838,7 @@ dept_list <- c("Urology","Gastroenterology","Cardiology","Internal Medicine","EN
                       location = ph_location_label(ph_label = "Title 1"))
   ppt_temp <- ph_with(ppt_temp, value = fpar(ftext(arrived_data_source, prop = footnote_text_style)),  
                       location = ph_location_label(ph_label = "Footer Placeholder 4"))
-  ppt_temp <- ph_with(ppt_temp, value = dept_quarterly_vol_function(i),
+  ppt_temp <- ph_with(ppt_temp, value = dept_monthly_vol_function(i),
                       location = ph_location_label(ph_label = "Chart Placeholder 6"))
   
   ### Generate Volume Heat Map Title
@@ -858,23 +856,22 @@ dept_list <- c("Urology","Gastroenterology","Cardiology","Internal Medicine","EN
                           location = ph_location_label(ph_label = "Table Placeholder 9"))
   
   ### Key Takeaways 
-  vol_slide_takeaways <- block_list(fpar(ftext(paste0("Total volume for ",reporting_YearQtr," was ",dept_monthly_vol_takeaway(i)[2],
-                                                      " (",dept_monthly_vol_takeaway(i)[1]," was in-person visits)"),
+  vol_slide_takeaways <- block_list(fpar(ftext(paste0("Total volume from ",reporting_start," to ",reporting_end," was ",dept_monthly_vol_takeaway(i)[1],
+                                                      " (",dept_monthly_vol_takeaway(i)[2]," was in-person visits)"),
                                                prop = fp_text(font.family = 'Calibri',font.size=16, bold = TRUE))),
                                     fpar(ftext(paste0("Average monthly volume for this quarter was ",dept_monthly_vol_takeaway(i)[3]),
                                                prop = fp_text(font.family = 'Calibri',font.size=14))),
-                                    fpar(ftext(paste0("This is ",dept_monthly_vol_takeaway(i)[4]," change from last quarter"),
+                                    fpar(ftext(paste0("This is ",dept_monthly_vol_takeaway(i)[4]," change from same months last year (",reporting_prior[1],
+                                                      " to ",reporting_prior[length(reporting_prior)],")"),
                                                prop = fp_text(font.family = 'Calibri',font.size=14))),
-                                    fpar(ftext(paste0("This is ",dept_monthly_vol_takeaway(i)[5]," change from same quarter last year"),
-                                               prop = fp_text(font.family = 'Calibri',font.size=14))),
-                                    fpar(ftext(paste0(dept_monthly_vol_takeaway(i)[6]," saw the largest volume with ",dept_monthly_vol_takeaway(i)[7],
-                                                      " visits (",dept_monthly_vol_takeaway(i)[8]," of total volume)"),
+                                    fpar(ftext(paste0(dept_monthly_vol_takeaway(i)[5]," completed the largest volume with ",dept_monthly_vol_takeaway(i)[6],
+                                                      " visits (",dept_monthly_vol_takeaway(i)[7]," of total volume)"),
                                                prop = fp_text(font.family = 'Calibri',font.size=14))))
   
   
   ppt_temp <- ph_with(ppt_temp, value = vol_slide_takeaways,  
                       location = ph_location_label(ph_label = "Text Placeholder 3"),
-                      level_list = c(1,2,2,2,2)) 
+                      level_list = c(1,2,2,2)) 
   
   
   ## Access Metrics Slide ========================================================
@@ -937,7 +934,7 @@ dept_list <- c("Urology","Gastroenterology","Cardiology","Internal Medicine","EN
   
 
   # Compiled Slide Output --------------------------------------------------------
-  print(ppt_temp, target=paste0(reporting_YearQtr,"_Wait Time Report.pptx"))
+  print(ppt_temp, target=paste0("Wait Time Report-",reporting_current[1],"_",reporting_current[length(reporting_current)],".pptx"))
   # print(ppt_temp, target=paste0("/SharedDrive/deans/Presidents/SixSigma/Individual Folders/Current Employees/Engineers/So Youn Kweon/Quarterly_Reports/",reporting_YearQtr,"_Wait Time Report.pptx"))
   
 ```
