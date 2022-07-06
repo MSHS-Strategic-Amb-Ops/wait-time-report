@@ -254,10 +254,7 @@ dept_zip_code_ref <- read_csv("C:/Users/kweons01/Desktop/Strategic Initiatives -
 ```{r Global Variables, echo = FALSE, warning = FALSE, message = FALSE}
 
 # Set variables for report
-# reporting_year <- dlgInput("Enter Reporting Year")$res
-# reporting_quarter <- toupper(dlgInput("Enter Reporting Year")$res)
-
-reporting_specialties <- c("Orthopedics")
+reporting_specialties <- c("Orthopedics","Urology")
 reporting_start <- "2022-01-01"
 reporting_end <- "2022-05-31"
 
@@ -274,6 +271,7 @@ reporting_prior <- as.vector(lapply(seq.Date(from = as.Date(reporting_start), to
                                      function(x)format(as.Date(as.yearmon(format(as.Date(x), "%Y-%m")) - 1), "%Y-%m")))
 
 ```
+
 
 ```{r Data in Scope Filtering, echo = FALSE, warning = FALSE, message = FALSE}
 
@@ -864,8 +862,8 @@ dept_list <- reporting_specialties
                                                prop = fp_text(font.family = 'Calibri',font.size=16, bold = TRUE))),
                                     fpar(ftext(paste0("Average monthly volume for this quarter was ",dept_monthly_vol_takeaway(i)[3]),
                                                prop = fp_text(font.family = 'Calibri',font.size=14))),
-                                    fpar(ftext(paste0("This is ",dept_monthly_vol_takeaway(i)[4]," change from same months last year (",reporting_prior[1],
-                                                      " to ",reporting_prior[length(reporting_prior)],")"),
+                                    fpar(ftext(paste0("This is ",dept_monthly_vol_takeaway(i)[4]," change from the same months last year (",
+                                                      reporting_prior[1]," to ",reporting_prior[length(reporting_prior)],")"),
                                                prop = fp_text(font.family = 'Calibri',font.size=14))),
                                     fpar(ftext(paste0(dept_monthly_vol_takeaway(i)[5]," completed the largest volume with ",dept_monthly_vol_takeaway(i)[6],
                                                       " visits (",dept_monthly_vol_takeaway(i)[7]," of total volume)"),
