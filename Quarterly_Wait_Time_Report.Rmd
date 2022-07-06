@@ -423,6 +423,7 @@ dept_monthly_vol_function <- function(department){
     filter(Visit.Method != "Total") %>%
     group_by(Campus.Specialty, Appt.MonthYear, Appt.Year, Appt.Month, Visit.Method, group) %>%
     summarise(monthly_vol = sum(monthly_vol)) %>%
+    group_by(Campus.Specialty, Appt.MonthYear, Appt.Year, Appt.Month) %>%
     mutate(perc = percent(monthly_vol/sum(monthly_vol),0)) 
   
   ggplot(dept_vol, aes(x= Appt.MonthYear,
@@ -444,14 +445,14 @@ dept_monthly_vol_function <- function(department){
             legend.direction = "horizontal",
             legend.title = element_blank(),
             axis.title = element_blank(),
-            axis.text.y = element_text(size="10"),
-            axis.text.x = element_text(size="10"),
+            axis.text.y = element_text(size="8"),
+            axis.text.x = element_text(size="8", angle = 45, vjust = 1, hjust = 1),
             axis.title.x = element_blank(),
             axis.line = element_line(size = 0.3, colour = "black"))+
     geom_text(aes(label=paste0(prettyNum(monthly_vol, big.mark = ','),"\n","(",perc,")")), color="white", 
-                size=3, fontface="bold", position = position_stack(vjust = 0.5))+
+                size=2.5, fontface="bold", position = position_stack(vjust = 0.5))+
     stat_summary(fun.y = sum, vjust = -1, aes(label=ifelse(..y.. == 0,"",prettyNum(..y.., big.mark = ',')), group = Appt.MonthYear), geom="text", color="black", 
-                 size=3.5)+
+                 size=3)+
     guides(fill = guide_legend(nrow = 1))
 
 
@@ -752,18 +753,19 @@ dept_site_monthly_vol_function <- function(department){
   monthOptions <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
    
   # department <- i
-  dept_vol_site <- scheduling_data %>%
+  dept_vol_site <- scheduling_data_raw %>%
     filter(Campus.Specialty == department) %>%
     filter(Appt.Status == "Arrived") %>%
-    filter(Appt.DateYear <= reporting_end) %>%
+    filter(Appt.DateYear <= reporting_end & Appt.DateYear >= as.Date("2021-01-01")) %>%
     group_by(Campus, Appt.MonthYear) %>%
     summarise(monthly_vol = n()) %>%
-    rename(Site = Campus)
+    rename(Site = Campus,
+           Month = Appt.MonthYear) 
   
   max <- max(dept_vol_site$monthly_vol)
   
   dept_vol_site <- dept_vol_site %>%
-    pivot_wider(names_from = Appt.MonthYear,
+    pivot_wider(names_from = Site,
                 values_from = monthly_vol)
 
 colourer <- col_numeric(
@@ -775,16 +777,13 @@ tbl_output <- flextable(dept_vol_site) %>%
   merge_v(part = "header", j = 1) %>% 
   merge_h(part = "header", i = 1) %>% 
   theme_booktabs(bold_header = TRUE) %>% 
-  fontsize(size = 7.5, part = "all") %>%
+  fontsize(size = 9, part = "all") %>%
   align(align = "center", part = "all") %>%
-  align(j = 1, align = "left", part = "all") %>%
   bg(
     bg = colourer,
-    j = ~ . -Site,
+    j = ~ . -Month,
     part = "body") %>%
-  width(j = 1, width = 1.5) %>%
-  width(j = 2:length(dept_vol_site), width = 0.6) %>%
-
+  width(width = 1.1)
 
 return(tbl_output)
 
@@ -795,8 +794,10 @@ return(tbl_output)
 
 ```{r Data Sources, echo = FALSE, warning = FALSE, message = FALSE}
 
-arrived_data_source <- paste0("Data Source: Epic EMR - Arrived Visits from ", paste0(reporting_prior[1],"-01"), " to ", reporting_end)
-scheduled_data_source <- paste0("Data Source: Epic EMR - Scheduled Visits from ", paste0(reporting_prior[1],"-01"), " to ", reporting_end)
+arrived_data_source <- paste0("Data Source: Epic EMR - Arrived Visits from ", paste0(reporting_prior[1],"-01"), " to ", reporting_end,
+                              "; includes ", paste(inc_sites, collapse = ", "))
+scheduled_data_source <- paste0("Data Source: Epic EMR - Scheduled Visits from ", paste0(reporting_prior[1],"-01"), " to ", reporting_end,
+                                "; includes ", paste(inc_sites, collapse = ", "))
 
 ```
 
@@ -817,11 +818,13 @@ dept_list <- reporting_specialties
   # 1. Create Title Slide --------------------------------------------------------
   ppt_temp <- ppt_temp %>%
     add_slide(layout = "Title Slide", master = "Default Theme")
-  ppt_temp  <- ph_with(ppt_temp, value = paste0("Quarterly Access Report"), 
+  ppt_temp  <- ph_with(ppt_temp, value = paste0("Access Report"), 
                        location = ph_location_label(ph_label = "Title 1"))
-  ppt_temp <-  ph_with(ppt_temp, value = as.character(reporting_YearQtr), 
+  ppt_temp <-  ph_with(ppt_temp, value = paste(reporting_specialties, collapse = ", "),
                        location = ph_location_label(ph_label = "Subtitle 2"))
-  
+  ppt_temp <-  ph_with(ppt_temp, value = paste0("From ",reporting_start," to ",reporting_end), 
+                       location = ph_location_label(ph_label = "Text Placeholder 6"))
+
   for(i in dept_list){
 
   # 4. Create Volume & Access Slide -----------------------------------------------
@@ -834,7 +837,7 @@ dept_list <- reporting_specialties
   ## Volume Metrics Slide ========================================================
   ppt_temp <- ppt_temp %>%
     add_slide(layout = "Volume_Slide", master = "Default Theme")
-  ppt_temp <- ph_with(ppt_temp, value = paste0("Volume & Performance: ",i, " ",reporting_quarter), 
+  ppt_temp <- ph_with(ppt_temp, value = paste0("Volume & Performance: ",i, " (",reporting_start," - ", reporting_end,")"), 
                       location = ph_location_label(ph_label = "Title 1"))
   ppt_temp <- ph_with(ppt_temp, value = fpar(ftext(arrived_data_source, prop = footnote_text_style)),  
                       location = ph_location_label(ph_label = "Footer Placeholder 4"))
@@ -877,7 +880,7 @@ dept_list <- reporting_specialties
   ## Access Metrics Slide ========================================================
   ppt_temp <- ppt_temp %>%
     add_slide(layout = "Access_Slide", master = "Default Theme")
-  ppt_temp <- ph_with(ppt_temp, value = paste0("Access: ",i, " ",reporting_quarter), 
+  ppt_temp <- ph_with(ppt_temp, value = paste0("Access: ",i, " (",reporting_start," to ", reporting_end,")"), 
                       location = ph_location_label(ph_label = "Title 1"))
   ppt_temp <- ph_with(ppt_temp, value = fpar(ftext(scheduled_data_source, prop = footnote_text_style)),  
                       location = ph_location_label(ph_label = "Footer Placeholder 4"))
@@ -887,7 +890,7 @@ dept_list <- reporting_specialties
                       location = ph_location_label(ph_label = "Table Placeholder 9"))
   
   ### Key Takeaways 
-  access_slide_takeaways <- block_list(fpar(ftext(paste0("Total new patient visits scheduled in ",reporting_YearQtr," was ",dept_access_takeaway(i)[1],
+  access_slide_takeaways <- block_list(fpar(ftext(paste0("Total new patient visits scheduled from ",reporting_start," to ", reporting_end," was ",dept_access_takeaway(i)[1],
                                                       " (",dept_access_takeaway(i)[2]," of total visits scheduled)"),
                                                prop = fp_text(font.family = 'Calibri',font.size=16, bold = TRUE))),
                                     fpar(ftext(paste0(dept_access_takeaway(i)[3],
@@ -934,7 +937,7 @@ dept_list <- reporting_specialties
   
 
   # Compiled Slide Output --------------------------------------------------------
-  print(ppt_temp, target=paste0("Wait Time Report-",reporting_current[1],"_",reporting_current[length(reporting_current)],".pptx"))
+  print(ppt_temp, target=paste0("Access Report - ",reporting_current[1],"_",reporting_current[length(reporting_current)],".pptx"))
   # print(ppt_temp, target=paste0("/SharedDrive/deans/Presidents/SixSigma/Individual Folders/Current Employees/Engineers/So Youn Kweon/Quarterly_Reports/",reporting_YearQtr,"_Wait Time Report.pptx"))
   
 ```
