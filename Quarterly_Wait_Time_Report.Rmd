@@ -254,9 +254,10 @@ dept_zip_code_ref <- read_csv("C:/Users/kweons01/Desktop/Strategic Initiatives -
 ```{r Global Variables, echo = FALSE, warning = FALSE, message = FALSE}
 
 # Set variables for report
-reporting_specialties <- c("Orthopedics","Urology")
+reporting_specialties <- c("Urology","Gastroenterology","Cardiology","Internal Medicine",
+                          "ENT-Otolaryngology","Neurology","Endocrinology","Orthopedics")
 reporting_start <- "2022-01-01"
-reporting_end <- "2022-05-31"
+reporting_end <- "2022-09-30"
 
 reporting_months <- as.vector(c(lapply(seq.Date(from = as.Date(reporting_start), to = as.Date(reporting_end), by = "month"), 
                                      function(x)format(as.Date(as.yearmon(format(as.Date(x), "%Y-%m")) - 1), "%Y-%m")),
