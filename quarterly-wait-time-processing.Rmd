@@ -1,0 +1,455 @@
+---
+title: "Quarterly Performance Report Q2"
+output: 
+  powerpoint_presentation:
+    reference_doc: template.pptx
+---
+
+```{r Load Packages, echo = FALSE, warning = FALSE, message = FALSE}
+# # Load packages -----------------------------------------------------------------------------------
+suppressMessages({
+  memory.limit(size = 8000000)
+  library(readxl)
+  library(writexl)
+  library(plyr)
+  library(dplyr)
+  library(data.table)
+  library(zoo)
+  library(shiny)
+  library(shinydashboard)
+  library(shinydashboardPlus)
+  library(shinyWidgets)
+  library(htmlwidgets)
+  library(lubridate)
+  library(tcltk)
+  library(tidyverse)
+  library(plotly)
+  library(knitr)
+  library(kableExtra)
+  library(leaflet)
+  library(grid)
+  library(gridExtra)
+  library(eeptools)
+  library(ggQC)
+  library(zipcodeR)
+  library(utils)
+  library(scales)
+  library(chron)
+  library(bupaR)
+  library(shiny)
+  library(DT)
+  library(DiagrammeR)
+  library(shinyalert)
+  library(edeaR)
+  library(processmapR)
+  library(processmonitR)
+  library(processanimateR)
+  library(tidyr)
+  library(lubridate)
+  library(RColorBrewer)
+  library(DiagrammeR)
+  library(ggplot2)
+  library(leaflet)
+  library(readr)
+  library(highcharter)
+  library(ggforce) # for 'geom_arc_bar'
+  library(packcircles) # for packed circle graph
+  library(viridis)
+  library(ggiraph)
+  library(treemapify)
+  library(treemap)
+  library(broom)
+  library(extrafont)
+  library(tis) # for US holidays
+  library(vroom)
+  library(sjmisc)
+  library(tools)
+  library(here)
+  library(shinyBS)
+  library(shinyscreenshot)
+  library(fasttime)
+  library(shinycssloaders)
+  library(feather)
+  # library(zipcodeR)
+  library(formattable)
+  library(shinyjs)
+  library(janitor)
+  library(patchwork)
+  library(flexdashboard)
+  # library(tidyverse)
+  # library(viridis)
+  # library(hrbrthemes)
+  # library(plotly)
+  # install.packages("bsts")
+  library(bsts)
+  library(reactable)
+  # install.packages("reactablefmtr")
+  library(reactablefmtr)
+  library(svDialogs)
+  # library(openxlsx)
+  library(flextable)
+  library(officedown)
+  library(officer)
+  library(magrittr)
+  library(webshot) 
+  library(png)
+  library(ggh4x)
+  library(RODBC)
+  library(DBI)
+  library(odbc)
+  library(dbplyr)
+  library(pool)
+  library(emojifont)
+})
+
+```
+
+
+
+```{r Graph asthetics, echo = FALSE, warning = FALSE, message = FALSE}
+### Color Functions for Graphs ============================================================
+
+# Mount Sinai corporate colors "USE THIS TO ADD COLORS"
+MountSinai_colors <- c(
+  `dark purple`  = "#212070",
+  `dark pink`    = "#d80b8c",
+  `dark blue`    = "#00aeef",
+  `dark grey`    = "#7f7f7f",
+  `yellow`       = "#ffc000",
+  `purple`       = "#7030a0",
+  `med purple`   = "#5753d0",
+  `med pink`     = "#f75dbe",
+  `med blue`     = "#5cd3ff",
+  `med grey`     = "#a5a7a5",
+  `light purple` = "#c7c6ef",
+  `light pink`   = "#fcc9e9",
+  `light blue`   = "#c9f0ff",
+  `light grey`   = "#dddedd"
+  )
+
+# Function to extract Mount Sinai colors as hex codes
+# Use Character names of MountSinai_colors
+
+MountSinai_cols <- function(...) {
+  cols <- c(...)
+  
+  if (is.null(cols))
+    return (MountSinai_colors)
+  
+  MountSinai_colors[cols]
+}
+
+# Color Function that can be used to call all colors is "MountSinai_cols()"
+# Use in ggplot 
+
+  #MountSinai_cols()       # will provide all colors and their hex codes in a table 
+  #MountSinai_cols("pink") # will provide color name and the hex code for the pink color
+
+# Create palettes 
+MountSinai_palettes <- list(
+  `all`   = MountSinai_cols("dark purple","dark pink","dark blue","dark grey",
+                            "med purple","med pink","med blue","med grey", 
+                            "light purple","light pink","light blue","light grey"),
+  
+  `main`  = MountSinai_cols("dark purple","dark pink","dark blue","dark grey"),
+  
+  `purple`  = MountSinai_cols("dark purple","med purple","light purple"),
+  
+  `pink`  = MountSinai_cols("dark pink","med pink","light pink"),
+  
+  `blue`  = MountSinai_cols("dark blue", "med blue", "light blue"),
+  
+  `grey`  = MountSinai_cols("dark grey", "med grey", "light grey"),
+  
+  `purpleGrey` = MountSinai_cols("dark purple", "dark grey"),
+  
+  `pinkBlue` = MountSinai_cols("dark pink", "dark blue")
+  
+)
+
+# MountSinai_palettes
+# Return function to interpolate a Mount Sinai color palette
+# default value is the main palette, reverse = True will change the order
+
+MountSinai_pal <- function(palette = "all", reverse = FALSE, ...) {
+  pal <- MountSinai_palettes[[palette]]
+  
+  if (reverse) pal <- rev(pal)
+  
+  colorRampPalette(pal, ...)
+}
+
+
+
+# Scale Function for ggplot can be used instead of scale_color_manual
+scale_color_MountSinai <- function(palette = "all", discrete = TRUE, reverse = FALSE, ...) {
+  pal <- MountSinai_pal(palette = palette, reverse = reverse)
+  
+  if (discrete) {
+    discrete_scale("colour", paste0("MountSinai_", palette), palette = pal, ...)
+  } else {
+    scale_color_gradientn(colours = pal(256), ...)
+  }
+}
+
+# Scale Fill for ggplot insetead of scale_fill_manual 
+scale_fill_MountSinai <- function(palette = "all", discrete = TRUE, reverse = FALSE, ...) {
+  pal <- MountSinai_pal(palette = palette, reverse = reverse)
+
+  if (discrete) {
+    discrete_scale("fill", paste0("MountSinai_", palette), palette = pal, ...)
+  } else {
+    scale_fill_gradientn(colours = pal(256), ...)
+  }
+}
+
+# Use in ggplot 
+  # scale_color_MountSinai("main")
+
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+<style>
+.table {
+table-layout: fixed;
+width: 100%;
+}
+</style>
+
+```{r Global Functions, echo = FALSE, warning = FALSE, message = FALSE}
+
+'%!in%' <- function(x,y)!('%in%'(x,y)) # Does not include
+not_all_na <- function(x) all(!is.na(x)) # Exclude columns with All NAs
+
+```
+
+
+```{r Connect Data, echo = FALSE, warning = FALSE, message = FALSE}
+
+# Connection to Oracle DB ------------------------------------------------------
+conn1 <- dbPool(drv = odbc(), dsn = "OAO Cloud DB SoYoun", timeout = 30)
+
+# Import Slot Availability Data ------------------------------------------------
+# slot_raw_tbl <- tbl(conn1, "Y_DM_BOOKED_FILLED_RATE")
+access_raw_tbl <- tbl(conn1, "MV_DM_PATIENT_ACCESS")
+
+# date_1 <- paste0(format(Sys.Date(), "%Y-%m-%d"), " 23:59:59")
+date_1 <- paste0(format(Sys.Date(), "%Y-%m-%d"), " 00:00:00")
+```
+
+
+```{r Time Frame Variables, echo = FALSE, warning = FALSE, message = FALSE}
+
+# Set variables for report
+# Set variables for report
+reporting_specialties <- c("Urology","Gastroenterology","Cardiology","Primary Care",
+                          "ENT-Otolaryngology","Neurology","Endocrinology","Orthopedics")
+
+reporting_start <- "2023-10-01"
+reporting_end <- "2023-12-31"
+
+reporting_start_date <- paste0(format(as.Date(reporting_start), "%Y-%m-%d"), " 00:00:00")
+reporting_end_date <- paste0(format(as.Date(reporting_end), "%Y-%m-%d"), " 00:00:00")
+
+
+quarter_start <- "2022-01-01"
+quarter_end <- "2024-01-01"
+
+quarter_start_date <- paste0(format(as.Date(quarter_start), "%Y-%m-%d"), " 00:00:00")
+quarter_end_date <- paste0(format(as.Date(quarter_end), "%Y-%m-%d"), " 00:00:00")
+
+
+quarters_list <- sort(unique(as.yearqtr(seq(from=as.Date(quarter_start), to=floor_date(as.Date(quarter_end) -1, "month"), by="month"))))
+
+reporting_date <- as.Date(reporting_end)
+reporting_year <- format(quarters_list[length(quarters_list)], "%Y") ## Create year column
+reporting_YearQtr <- quarters_list[length(quarters_list)]
+
+data_quarters <- tail(quarters_list,5)
+
+```
+
+
+```{r Import Data, echo = FALSE, warning = FALSE, message = FALSE}
+
+# Import Department Zip Code Data
+dept_zip_code_ref <- read_csv("Department_Zip_Code.csv")
+
+
+# Specify campuses to include
+inc_sites <- c("NETWORK","MSM","MSH-MSDFP","MSW","MSBI","MSUS","MSH- AMBULATORY CARE","MSDMG", "MSSN", "MSQ", "NYEE")
+
+scheduling_data_raw <- access_raw_tbl %>%
+  mutate(Campus = case_when(SITE == "MSDD" ~ "MSDMG",
+         TRUE ~ SITE)) %>%
+  mutate(Campus.Specialty = ifelse(DEPT_SPECIALTY_NAME %in% c("Internal Medicine", "Family Medicine","Internal Medicine-CPR"), "Primary Care",
+                                   DEPT_SPECIALTY_NAME)) %>%
+  filter(Campus %in% inc_sites) 
+
+```
+
+
+```{r Monthly Volume Data, echo = FALSE, warning = FALSE, message = FALSE}
+
+monthly_vol <- scheduling_data_raw %>%
+  filter(DERIVED_STATUS_DESC == "Arrived") %>%
+  filter(APPT_DTTM <= TO_DATE(reporting_end_date,"YYYY-MM-DD HH24:MI:SS")) %>%
+  mutate(Appt.Year = year(APPT_DTTM),
+         Appt.MonNum = month(APPT_DTTM)) %>%
+  group_by(Campus, Campus.Specialty, DEPARTMENT_NAME, Appt.Year, Appt.MonNum, VISIT_METHOD) %>%
+  summarise(monthly_vol = n()) %>%
+  collect()
+
+monthly_vol <- monthly_vol %>%
+  rename(Department = DEPARTMENT_NAME) %>%
+  mutate(Visit.Method  = case_when(VISIT_METHOD == "IN PERSON" ~ 'IN PERSON'
+                                   ,TRUE ~ 'TELEHEALTH')) %>%
+  mutate(Appt.MonNum = as.numeric(Appt.MonNum),
+         Appt.MonthYear = format(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d"), "%Y-%m"),
+         Appt.Month = format(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d"), "%b"),
+         Appt.YearQtr = as.yearqtr(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d")))
+
+
+# # Merge with Rad Onc and Radiology Data
+# monthly_vol <- bind_rows(monthly_vol, rad_radOnc_data)
+
+monthly_vol <- monthly_vol %>%
+  # dplyr::select(-Month) %>%
+  pivot_wider(
+    names_from = Visit.Method,
+    values_from = monthly_vol,
+    values_fill=list(monthly_vol=0)
+  ) %>%
+  mutate(Total = sum(`IN PERSON`, TELEHEALTH)) %>%
+  pivot_longer(
+    10:12,
+    names_to = "Visit.Method",
+    values_to = "monthly_vol"
+  )
+
+```
+
+
+```{r Department Zip Code Data, echo = FALSE, warning = FALSE, message = FALSE}
+
+# Volume by Department Zip Code
+vol_zip_code <- scheduling_data_raw %>%
+  filter(DERIVED_STATUS_DESC == "Arrived") %>%
+  filter(APPT_DTTM >= TO_DATE(reporting_start_date,"YYYY-MM-DD HH24:MI:SS")) %>%
+  filter(APPT_DTTM <= TO_DATE(reporting_end_date,"YYYY-MM-DD HH24:MI:SS")) %>%
+  collect()
+  
+vol_zip_code$dept_zip_code <- dept_zip_code_ref$`Address Zip Code`[match(vol_zip_code$DEPARTMENT_NAME, dept_zip_code_ref$`Department Name`)] 
+
+coordinates <- geocode_zip(vol_zip_code$dept_zip_code)
+vol_zip_code <- merge(vol_zip_code, coordinates, by.x = c("dept_zip_code"), by.y = c("zipcode"), all.x = TRUE)
+vol_zip_code <- vol_zip_code %>%
+  rename(Department = DEPARTMENT_NAME) %>%
+  mutate(Appt.Year = year(APPT_DTTM),
+         Appt.MonNum = month(APPT_DTTM)) %>%
+  mutate(Appt.MonNum = as.numeric(Appt.MonNum),
+         Appt.MonthYear = format(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d"), "%Y-%m"),
+         Appt.Month = format(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d"), "%b"),
+         Appt.YearQtr = as.yearqtr(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d"))) %>%
+  group_by(Campus.Specialty, Appt.YearQtr, dept_zip_code, lat, lng) %>%
+  summarise(total_vol = n()) %>%
+  mutate(dept_zip_code=factor(dept_zip_code, unique(dept_zip_code)))
+    
+
+invisible(gc())
+```
+
+
+```{r Time to Appointment Distribution Data, echo = FALSE, warning = FALSE, message = FALSE}
+
+# Wait Time Distribution by New vs. Established 
+wait_time_dist <- scheduling_data_raw %>%
+  filter(APPT_MADE_DTTM >= TO_DATE(reporting_start_date,"YYYY-MM-DD HH24:MI:SS")) %>%
+  filter(APPT_MADE_DTTM <= TO_DATE(reporting_end_date,"YYYY-MM-DD HH24:MI:SS")) %>%
+  mutate(Wait.Time = TO_DATE(CONTACT_DATE) - TO_DATE(APPT_MADE_DATE)) %>%
+  filter(Wait.Time >= 0) %>%
+  mutate(group = ifelse(Wait.Time >= 0 & Wait.Time <=7, "0-7",
+                        ifelse(Wait.Time >7 & Wait.Time <=14, "8-14",
+                               ifelse(Wait.Time >14 & Wait.Time <=30, "15-30", ">30")))) %>%
+  mutate(Appt.Made.Year = year(APPT_MADE_DTTM),
+         Appt.Made.MonNum = month(APPT_MADE_DTTM)) %>%
+  group_by(Campus.Specialty, Appt.Made.Year, Appt.Made.MonNum, VISIT_GROUP_NUM, VISIT_METHOD, group) %>%
+  summarise(total = n()) %>%
+  collect()
+
+
+wait_time_dist <- wait_time_dist %>%
+  mutate(Visit.Method  = case_when(VISIT_METHOD == "IN PERSON" ~ 'IN PERSON'
+                                   ,TRUE ~ 'TELEHEALTH')) %>%
+  mutate(New.PT2  = case_when(VISIT_GROUP_NUM == 4 ~ 'New'
+                                   ,TRUE ~ 'Established')) %>%
+  mutate(Appt.Made.MonNum = as.numeric(Appt.Made.MonNum),
+         Appt.Made.MonthYear = format(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"), "%Y-%m"),
+         Appt.Made.Month = format(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"), "%b"),
+         Appt.Made.YearQtr = as.yearqtr(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"))) %>%
+  group_by(Campus.Specialty, Appt.Made.YearQtr, New.PT2, Visit.Method, group) %>%
+  summarise(total = sum(total)) 
+
+```
+
+
+```{r Time to Appointment Data, echo = FALSE, warning = FALSE, message = FALSE}
+
+# Wait Time Distribution by Site
+wait_time_data <- scheduling_data_raw %>%
+  filter(APPT_MADE_DTTM >= TO_DATE(reporting_start_date,"YYYY-MM-DD HH24:MI:SS")) %>%
+  filter(APPT_MADE_DTTM <= TO_DATE(reporting_end_date,"YYYY-MM-DD HH24:MI:SS")) %>%
+  mutate(Wait.Time = TO_DATE(CONTACT_DATE) - TO_DATE(APPT_MADE_DATE)) %>%
+  filter(Wait.Time >= 0) %>%
+  mutate(New.PT2  = ifelse(VISIT_GROUP_NUM == 4, 'New', 'Established')) %>%
+  collect() 
+
+
+wait_time_mshs <- wait_time_data %>%
+  mutate(New.PT2  = ifelse(is.na(New.PT2), 'Established', New.PT2)) %>%
+  mutate(Appt.Made.Year = year(APPT_MADE_DTTM),
+         Appt.Made.MonNum = month(APPT_MADE_DTTM)) %>%
+  mutate(Appt.Made.YearQtr = as.yearqtr(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"))) %>%
+  group_by(Campus.Specialty, Appt.Made.YearQtr, New.PT2) %>%
+  summarise(med_wait = median(Wait.Time, na.rm = TRUE)) 
+
+  
+wait_time_site <- wait_time_data %>%
+  mutate(New.PT2  = ifelse(is.na(New.PT2), 'Established', New.PT2)) %>%
+  mutate(Appt.Made.Year = year(APPT_MADE_DTTM),
+         Appt.Made.MonNum = month(APPT_MADE_DTTM)) %>%
+  mutate(Appt.Made.YearQtr = as.yearqtr(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"))) %>%
+  group_by(Campus.Specialty, Appt.Made.YearQtr, Campus, New.PT2) %>%
+  summarise(med_wait = median(Wait.Time, na.rm = TRUE))
+
+wait_time_dept <- wait_time_data %>%
+       mutate(New.PT2  = ifelse(is.na(New.PT2), 'Established', New.PT2)) %>%
+       mutate(Appt.Made.Year = year(APPT_MADE_DTTM),
+              Appt.Made.MonNum = month(APPT_MADE_DTTM),
+              Appt.Made.YearQtr = as.yearqtr(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"))) %>%
+       filter(Campus.Specialty == department) %>%
+       filter(Appt.Made.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
+       filter(Wait.Time >= 0) %>%
+       filter(New.PT2 == "New") %>%
+       summarise(med_waitTime = median(Wait.Time))
+
+```
+
+
+```{r}
+
+saveRDS(monthly_vol, "monthly_vol.rds")
+saveRDS(vol_zip_code, "vol_zip_code.rds")
+saveRDS(wait_time_dist, "wait_time_dist.rds")
+saveRDS(wait_time_site, "wait_time_site.rds")
+saveRDS(wait_time_mshs, "wait_time_mshs.rds")
+saveRDS(wait_time_dept, "wait_time_dept.rds")
+# saveRDS(wait_time_data, "wait_time_data.rds")
+
+```
+
+

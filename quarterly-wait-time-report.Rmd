@@ -230,15 +230,22 @@ not_all_na <- function(x) all(!is.na(x)) # Exclude columns with All NAs
 
 ```{r Connect Data, echo = FALSE, warning = FALSE, message = FALSE}
 
-# Connection to Oracle DB ------------------------------------------------------
-conn1 <- dbPool(drv = odbc(), dsn = "OAO Cloud DB SoYoun", timeout = 30)
-
-# Import Slot Availability Data ------------------------------------------------
-# slot_raw_tbl <- tbl(conn1, "Y_DM_BOOKED_FILLED_RATE")
-access_raw_tbl <- tbl(conn1, "MV_DM_PATIENT_ACCESS")
-
-# date_1 <- paste0(format(Sys.Date(), "%Y-%m-%d"), " 23:59:59")
 date_1 <- paste0(format(Sys.Date(), "%Y-%m-%d"), " 00:00:00")
+
+# Specify campuses to include
+inc_sites <- c("NETWORK","MSM","MSH-MSDFP","MSW","MSBI","MSUS","MSH- AMBULATORY CARE","MSDMG", "MSSN", "MSQ", "NYEE")
+```
+
+
+```{r Manual Data Import, echo = FALSE, warning = FALSE, message = FALSE}
+
+monthly_vol <- readRDS(file.choose())
+vol_zip_code <- readRDS(file.choose())
+wait_time_dist <- readRDS(file.choose())
+wait_time_site <- readRDS(file.choose())
+wait_time_mshs <- readRDS(file.choose())
+wait_time_dept <- readRDS(file.choose())
+
 ```
 
 
@@ -271,69 +278,6 @@ reporting_YearQtr <- quarters_list[length(quarters_list)]
 
 data_quarters <- tail(quarters_list,5)
 
-```
-
-
-```{r Import Data, echo = FALSE, warning = FALSE, message = FALSE}
-
-# Import Department Zip Code Data
-dept_zip_code_ref <- read_csv("Department_Zip_Code.csv")
-
-
-# Specify campuses to include
-inc_sites <- c("NETWORK","MSM","MSH-MSDFP","MSW","MSBI","MSUS","MSH- AMBULATORY CARE","MSDMG", "MSSN", "MSQ", "NYEE")
-
-scheduling_data_raw <- access_raw_tbl %>%
-  mutate(Campus = case_when(SITE == "MSDD" ~ "MSDMG",
-         TRUE ~ SITE)) %>%
-  mutate(Campus.Specialty = ifelse(DEPT_SPECIALTY_NAME %in% c("Internal Medicine", "Family Medicine","Internal Medicine-CPR"), "Primary Care",
-                                   DEPT_SPECIALTY_NAME)) %>%
-  filter(Campus %in% inc_sites) 
-
-```
-
-
-```{r Monthly Volume Data, echo = FALSE, warning = FALSE, message = FALSE}
-
-monthly_vol <- scheduling_data_raw %>%
-  filter(DERIVED_STATUS_DESC == "Arrived") %>%
-  filter(APPT_DTTM <= TO_DATE(reporting_end_date,"YYYY-MM-DD HH24:MI:SS")) %>%
-  mutate(Appt.Year = year(APPT_DTTM),
-         Appt.MonNum = month(APPT_DTTM)) %>%
-  group_by(Campus, Campus.Specialty, DEPARTMENT_NAME, Appt.Year, Appt.MonNum, VISIT_METHOD) %>%
-  summarise(monthly_vol = n()) %>%
-  collect()
-
-monthly_vol <- monthly_vol %>%
-  rename(Department = DEPARTMENT_NAME) %>%
-  mutate(Visit.Method  = case_when(VISIT_METHOD == "IN PERSON" ~ 'IN PERSON'
-                                   ,TRUE ~ 'TELEHEALTH')) %>%
-  mutate(Appt.MonNum = as.numeric(Appt.MonNum),
-         Appt.MonthYear = format(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d"), "%Y-%m"),
-         Appt.Month = format(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d"), "%b"),
-         Appt.YearQtr = as.yearqtr(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d")))
-
-
-# # Merge with Rad Onc and Radiology Data
-# monthly_vol <- bind_rows(monthly_vol, rad_radOnc_data)
-
-monthly_vol <- monthly_vol %>%
-  # dplyr::select(-Month) %>%
-  pivot_wider(
-    names_from = Visit.Method, 
-    values_from = monthly_vol,
-    values_fill=list(monthly_vol=0)
-  ) %>%
-  mutate(Total = sum(`IN PERSON`, TELEHEALTH)) %>%
-  pivot_longer(
-    10:12,
-    names_to = "Visit.Method",
-    values_to = "monthly_vol"
-  )
-
-
-# require(openxlsx)
-# write.xlsx(monthly_vol, "monthly_vol_7.13.23.xlsx")
 ```
 
 
@@ -500,36 +444,6 @@ return(tbl_output)
 ```
 
 
-```{r Department Zip Code Data, echo = FALSE, warning = FALSE, message = FALSE}
-
-# Volume by Department Zip Code
-vol_zip_code <- scheduling_data_raw %>%
-  filter(DERIVED_STATUS_DESC == "Arrived") %>%
-  filter(APPT_DTTM >= TO_DATE(reporting_start_date,"YYYY-MM-DD HH24:MI:SS")) %>%
-  filter(APPT_DTTM <= TO_DATE(reporting_end_date,"YYYY-MM-DD HH24:MI:SS")) %>%
-  collect()
-  
-vol_zip_code$dept_zip_code <- dept_zip_code_ref$`Address Zip Code`[match(vol_zip_code$DEPARTMENT_NAME, dept_zip_code_ref$`Department Name`)] 
-
-coordinates <- geocode_zip(vol_zip_code$dept_zip_code)
-vol_zip_code <- merge(vol_zip_code, coordinates, by.x = c("dept_zip_code"), by.y = c("zipcode"), all.x = TRUE)
-vol_zip_code <- vol_zip_code %>%
-  rename(Department = DEPARTMENT_NAME) %>%
-  mutate(Appt.Year = year(APPT_DTTM),
-         Appt.MonNum = month(APPT_DTTM)) %>%
-  mutate(Appt.MonNum = as.numeric(Appt.MonNum),
-         Appt.MonthYear = format(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d"), "%Y-%m"),
-         Appt.Month = format(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d"), "%b"),
-         Appt.YearQtr = as.yearqtr(as.Date(paste0(Appt.Year,"-",Appt.MonNum,"-01"), "%Y-%m-%d"))) %>%
-  group_by(Campus.Specialty, Appt.YearQtr, dept_zip_code, lat, lng) %>%
-  summarise(total_vol = n()) %>%
-  mutate(dept_zip_code=factor(dept_zip_code, unique(dept_zip_code)))
-    
-
-invisible(gc())
-```
-
-
 ```{r Monthly Volume Heat Map Graph Output, echo = FALSE, warning = FALSE, message = FALSE}
 
 dept_heat_map_function <- function(department){
@@ -622,39 +536,6 @@ dept_heat_map_function <- function(department){
 ```
 
 
-```{r Time to Appointment Distribution Data, echo = FALSE, warning = FALSE, message = FALSE}
-
-# Wait Time Distribution by New vs. Established 
-wait_time_dist <- scheduling_data_raw %>%
-  filter(APPT_MADE_DTTM >= TO_DATE(reporting_start_date,"YYYY-MM-DD HH24:MI:SS")) %>%
-  filter(APPT_MADE_DTTM <= TO_DATE(reporting_end_date,"YYYY-MM-DD HH24:MI:SS")) %>%
-  mutate(Wait.Time = TO_DATE(CONTACT_DATE) - TO_DATE(APPT_MADE_DATE)) %>%
-  filter(Wait.Time >= 0) %>%
-  mutate(group = ifelse(Wait.Time >= 0 & Wait.Time <=7, "0-7",
-                        ifelse(Wait.Time >7 & Wait.Time <=14, "8-14",
-                               ifelse(Wait.Time >14 & Wait.Time <=30, "15-30", ">30")))) %>%
-  mutate(Appt.Made.Year = year(APPT_MADE_DTTM),
-         Appt.Made.MonNum = month(APPT_MADE_DTTM)) %>%
-  group_by(Campus.Specialty, Appt.Made.Year, Appt.Made.MonNum, VISIT_GROUP_NUM, VISIT_METHOD, group) %>%
-  summarise(total = n()) %>%
-  collect()
-
-
-wait_time_dist <- wait_time_dist %>%
-  mutate(Visit.Method  = case_when(VISIT_METHOD == "IN PERSON" ~ 'IN PERSON'
-                                   ,TRUE ~ 'TELEHEALTH')) %>%
-  mutate(New.PT2  = case_when(VISIT_GROUP_NUM == 4 ~ 'New'
-                                   ,TRUE ~ 'Established')) %>%
-  mutate(Appt.Made.MonNum = as.numeric(Appt.Made.MonNum),
-         Appt.Made.MonthYear = format(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"), "%Y-%m"),
-         Appt.Made.Month = format(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"), "%b"),
-         Appt.Made.YearQtr = as.yearqtr(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"))) %>%
-  group_by(Campus.Specialty, Appt.Made.YearQtr, New.PT2, Visit.Method, group) %>%
-  summarise(total = sum(total)) 
-
-```
-
-
 ```{r Time to Appointment Distribution Table Output, echo = FALSE, warning = FALSE, message = FALSE}
 
 overall_time_to_appt_dist_function <- function(department){
@@ -693,49 +574,6 @@ overall_time_to_appt_dist_function <- function(department){
   return(graph)
   
 }
-
-```
-
-
-```{r Time to Appointment Data, echo = FALSE, warning = FALSE, message = FALSE}
-
-# Wait Time Distribution by Site
-wait_time_data <- scheduling_data_raw %>%
-  filter(APPT_MADE_DTTM >= TO_DATE(reporting_start_date,"YYYY-MM-DD HH24:MI:SS")) %>%
-  filter(APPT_MADE_DTTM <= TO_DATE(reporting_end_date,"YYYY-MM-DD HH24:MI:SS")) %>%
-  mutate(Wait.Time = TO_DATE(CONTACT_DATE) - TO_DATE(APPT_MADE_DATE)) %>%
-  filter(Wait.Time >= 0) %>%
-  mutate(New.PT2  = ifelse(VISIT_GROUP_NUM == 4, 'New', 'Established')) %>%
-  collect() 
-
-
-wait_time_mshs <- wait_time_data %>%
-  mutate(New.PT2  = ifelse(is.na(New.PT2), 'Established', New.PT2)) %>%
-  mutate(Appt.Made.Year = year(APPT_MADE_DTTM),
-         Appt.Made.MonNum = month(APPT_MADE_DTTM)) %>%
-  mutate(Appt.Made.YearQtr = as.yearqtr(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"))) %>%
-  group_by(Campus.Specialty, Appt.Made.YearQtr, New.PT2) %>%
-  summarise(med_wait = median(Wait.Time, na.rm = TRUE)) 
-
-  
-wait_time_site <- wait_time_data %>%
-  mutate(New.PT2  = ifelse(is.na(New.PT2), 'Established', New.PT2)) %>%
-  mutate(Appt.Made.Year = year(APPT_MADE_DTTM),
-         Appt.Made.MonNum = month(APPT_MADE_DTTM)) %>%
-  mutate(Appt.Made.YearQtr = as.yearqtr(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"))) %>%
-  group_by(Campus.Specialty, Appt.Made.YearQtr, Campus, New.PT2) %>%
-  summarise(med_wait = median(Wait.Time, na.rm = TRUE))
-
-wait_time_dept <- wait_time_data %>%
-       mutate(New.PT2  = ifelse(is.na(New.PT2), 'Established', New.PT2)) %>%
-       mutate(Appt.Made.Year = year(APPT_MADE_DTTM),
-              Appt.Made.MonNum = month(APPT_MADE_DTTM),
-              Appt.Made.YearQtr = as.yearqtr(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"))) %>%
-       filter(Campus.Specialty == department) %>%
-       filter(Appt.Made.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
-       filter(Wait.Time >= 0) %>%
-       filter(New.PT2 == "New") %>%
-       summarise(med_waitTime = median(Wait.Time))
 
 ```
 
@@ -806,7 +644,7 @@ dept_access_takeaway <- function(department){
   new_inPerson_14days <- as.character(sum((wait_time_new %>% filter(New.PT2 == "New" & Visit.Method == "IN PERSON" & group %in% c("0-7","8-14")))$perc))
   new_tele_14days <- as.character(sum((wait_time_new %>% filter(New.PT2 == "New" & Visit.Method == "TELEHEALTH" & group %in% c("0-7","8-14")))$perc))
   
-  dept_med_waitTime <- as.character(as.numeric(wait_time_dept$med_waitTime))
+  dept_med_waitTime <- dept_med_waitTime <- as.character(as.numeric(wait_time_dept$med_waitTime))
   
   key_list <- list(new_pt_vol, new_pt_vol_perc, new_inPerson_14days, new_tele_14days, dept_med_waitTime)
   
@@ -815,7 +653,6 @@ dept_access_takeaway <- function(department){
 
 
 ```
-
 
 
 ```{r Data Sources, echo = FALSE, warning = FALSE, message = FALSE}
@@ -964,19 +801,6 @@ dept_list <- reporting_specialties
   print(ppt_temp, target=paste0(reporting_YearQtr," Wait Time.pptx"))
   # print(ppt_temp, target=paste0("/SharedDrive/deans/Presidents/SixSigma/Individual Folders/Current Employees/Engineers/So Youn Kweon/Quarterly_Reports/",reporting_YearQtr,"_Wait Time Report.pptx"))
   
-```
-
-
-```{r}
-
-saveRDS(monthly_vol, "monthly_vol.rds")
-saveRDS(vol_zip_code, "vol_zip_code.rds")
-saveRDS(wait_time_dist, "wait_time_dist.rds")
-saveRDS(wait_time_site, "wait_time_site.rds")
-saveRDS(wait_time_mshs, "wait_time_mshs.rds")
-saveRDS(wait_time_dept, "wait_time_dept.rds")
-# saveRDS(wait_time_data, "wait_time_data.rds")
-
 ```
 
 
