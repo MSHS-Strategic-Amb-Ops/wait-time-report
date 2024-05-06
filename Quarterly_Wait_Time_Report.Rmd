@@ -236,6 +236,7 @@ conn1 <- dbPool(drv = odbc(), dsn = "OAO Cloud DB SoYoun", timeout = 30)
 # Import Slot Availability Data ------------------------------------------------
 # slot_raw_tbl <- tbl(conn1, "Y_DM_BOOKED_FILLED_RATE")
 access_raw_tbl <- tbl(conn1, "MV_DM_PATIENT_ACCESS")
+dept_zip_tbl <- tbl(conn1, "DEPT_ZIP_CODE")
 
 # date_1 <- paste0(format(Sys.Date(), "%Y-%m-%d"), " 23:59:59")
 date_1 <- paste0(format(Sys.Date(), "%Y-%m-%d"), " 00:00:00")
@@ -249,15 +250,15 @@ date_1 <- paste0(format(Sys.Date(), "%Y-%m-%d"), " 00:00:00")
 reporting_specialties <- c("Urology","Gastroenterology","Cardiology","Primary Care",
                           "ENT-Otolaryngology","Neurology","Endocrinology","Orthopedics")
 
-reporting_start <- "2023-10-01"
-reporting_end <- "2023-12-31"
+reporting_start <- "2024-01-01"
+reporting_end <- "2024-03-31"
 
 reporting_start_date <- paste0(format(as.Date(reporting_start), "%Y-%m-%d"), " 00:00:00")
 reporting_end_date <- paste0(format(as.Date(reporting_end), "%Y-%m-%d"), " 00:00:00")
 
 
-quarter_start <- "2022-01-01"
-quarter_end <- "2024-01-01"
+quarter_start <- "2023-01-01"
+quarter_end <- "2024-04-01"
 
 quarter_start_date <- paste0(format(as.Date(quarter_start), "%Y-%m-%d"), " 00:00:00")
 quarter_end_date <- paste0(format(as.Date(quarter_end), "%Y-%m-%d"), " 00:00:00")
@@ -277,18 +278,17 @@ data_quarters <- tail(quarters_list,5)
 ```{r Import Data, echo = FALSE, warning = FALSE, message = FALSE}
 
 # Import Department Zip Code Data
-dept_zip_code_ref <- read_csv("Department_Zip_Code.csv")
+dept_zip_code_ref <- dept_zip_tbl %>%
+  collect()
 
 
 # Specify campuses to include
 inc_sites <- c("NETWORK","MSM","MSH-MSDFP","MSW","MSBI","MSUS","MSH- AMBULATORY CARE","MSDMG", "MSSN", "MSQ", "NYEE")
 
 scheduling_data_raw <- access_raw_tbl %>%
-  mutate(Campus = case_when(SITE == "MSDD" ~ "MSDMG",
-         TRUE ~ SITE)) %>%
   mutate(Campus.Specialty = ifelse(DEPT_SPECIALTY_NAME %in% c("Internal Medicine", "Family Medicine","Internal Medicine-CPR"), "Primary Care",
                                    DEPT_SPECIALTY_NAME)) %>%
-  filter(Campus %in% inc_sites) 
+  filter(SITE %in% inc_sites) 
 
 ```
 
@@ -300,7 +300,7 @@ monthly_vol <- scheduling_data_raw %>%
   filter(APPT_DTTM <= TO_DATE(reporting_end_date,"YYYY-MM-DD HH24:MI:SS")) %>%
   mutate(Appt.Year = year(APPT_DTTM),
          Appt.MonNum = month(APPT_DTTM)) %>%
-  group_by(Campus, Campus.Specialty, DEPARTMENT_NAME, Appt.Year, Appt.MonNum, VISIT_METHOD) %>%
+  group_by(SITE, Campus.Specialty, DEPARTMENT_NAME, Appt.Year, Appt.MonNum, VISIT_METHOD) %>%
   summarise(monthly_vol = n()) %>%
   collect()
 
@@ -324,13 +324,16 @@ monthly_vol <- monthly_vol %>%
     values_from = monthly_vol,
     values_fill=list(monthly_vol=0)
   ) %>%
-  mutate(Total = sum(`IN PERSON`, TELEHEALTH)) %>%
+  ungroup() %>%
+  mutate(Total = `IN PERSON` + TELEHEALTH) %>%
   pivot_longer(
     10:12,
     names_to = "Visit.Method",
     values_to = "monthly_vol"
   )
 
+monthly_vol <- monthly_vol %>%
+  rename(Campus = SITE)
 
 # require(openxlsx)
 # write.xlsx(monthly_vol, "monthly_vol_7.13.23.xlsx")
@@ -362,8 +365,8 @@ dept_quarterly_vol_function <- function(department){
          subtitle = department,
          x = NULL, y = NULL, fill = "Site")+
     theme_bw()+
-    theme(plot.title = element_text(hjust=0.5, face = "bold", size = 14),
-            plot.subtitle = element_text(hjust=0.5, size = 12, face = "italic"),
+    theme(plot.title = element_text(hjust=0.5, face = "bold", size = 16),
+            plot.subtitle = element_text(hjust=0.5, size = 14, face = "italic"),
             legend.position = "bottom",
             legend.text = element_text(size="8"),
             legend.direction = "horizontal",
@@ -374,9 +377,9 @@ dept_quarterly_vol_function <- function(department){
             axis.title.x = element_blank(),
             axis.line = element_line(size = 0.3, colour = "black"))+
     geom_text(aes(label=paste0(prettyNum(quarterly_vol, big.mark = ','),"\n","(",perc,")")), color="white", 
-                size=3, fontface="bold", position = position_stack(vjust = 0.5))+
+                size=4, fontface="bold", position = position_stack(vjust = 0.5))+
     stat_summary(fun.y = sum, vjust = -1, aes(label=ifelse(..y.. == 0,"",prettyNum(..y.., big.mark = ',')), group = Appt.YearQtr), geom="text", color="black", 
-                 size=3.5)+
+                 size=4)+
     guides(fill = guide_legend(nrow = 1))
     
 }
@@ -401,22 +404,22 @@ dept_monthly_vol_takeaway <- function(department){
                 values_from = total) %>%
     mutate(var_last_qrt = percent((.[[3]] - .[[2]])/.[[2]],0),
            var_last_yr = percent((.[[3]]-.[[1]])/.[[1]],0))
-  
+
   qrt_vol <- as.character(prettyNum(qrt_vol_var[[3]], big.mark = ','))
-  var_last_qrt <- as.character(ifelse(qrt_vol_var[[4]] >0, paste0(qrt_vol_var[[4]], " increase from last quarter"), 
+  var_last_qrt <- as.character(ifelse(qrt_vol_var[[4]] >0, paste0(qrt_vol_var[[4]], " increase from last quarter"),
                                       paste0(qrt_vol_var[[4]] , " decrease from last quarter")))
-  var_last_yr <- as.character(ifelse(qrt_vol_var[[5]] >0, paste0(qrt_vol_var[[5]], " increase from same quarter last year"), 
+  var_last_yr <- as.character(ifelse(qrt_vol_var[[5]] >0, paste0(qrt_vol_var[[5]], " increase from same quarter last year"),
                                      paste0(qrt_vol_var[[5]]," decrease from same quarter last year")))
-  
+
   avg_monthly <- monthly_vol %>%
     filter(Campus.Specialty == department) %>%
     filter(Visit.Method == "Total") %>%
     filter(Appt.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
     group_by(Campus.Specialty, Appt.Month) %>%
-    summarise(total = sum(monthly_vol)) 
-  
+    summarise(total = sum(monthly_vol))
+
   avg_month <- as.character(prettyNum(round(mean(avg_monthly$total)), big.mark = ','))
-  
+
   visit_method_vol <- monthly_vol %>%
     filter(Campus.Specialty == department) %>%
     filter(Appt.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
@@ -426,9 +429,9 @@ dept_monthly_vol_takeaway <- function(department){
     ungroup() %>%
     group_by(Campus.Specialty) %>%
     mutate(perc = percent(total/sum(total),0))
-  
+
   in_person <- as.character(visit_method_vol$perc[which(visit_method_vol$Visit.Method == "IN PERSON")])
-  
+
   site_vol <- monthly_vol %>%
     filter(Campus.Specialty == department) %>%
     filter(Visit.Method == "Total") %>%
@@ -439,11 +442,11 @@ dept_monthly_vol_takeaway <- function(department){
     group_by(Campus.Specialty, Appt.YearQtr) %>%
     mutate(perc = percent(monthly_vol/sum(monthly_vol),0)) %>%
     filter(perc == max(perc))
-  
+
   max_vol <- as.character(prettyNum(site_vol$monthly_vol, big.mark = ','))
   max_vol_perc <- as.character(site_vol$perc, big.mark = ',')
   max_site <- as.character(site_vol$Campus)
-  
+
   key_list <- list(in_person, qrt_vol, avg_month, var_last_qrt, var_last_yr, max_site, max_vol, max_vol_perc)
   
   return(key_list)
@@ -492,7 +495,8 @@ tbl_output <- flextable(dept_vol_site) %>%
     part = "body") %>%
   vline(j = c(1, 4, 7, 10, 13), border = fp_border_default()) %>%
   width(j = 1, width = 1) %>%
-  width(j = 2:length(dept_vol_site), width = 0.6) %>%
+  width(j = 2:length(dept_vol_site), width = 0.6)
+
 return(tbl_output)
 
 }
@@ -509,7 +513,7 @@ vol_zip_code <- scheduling_data_raw %>%
   filter(APPT_DTTM <= TO_DATE(reporting_end_date,"YYYY-MM-DD HH24:MI:SS")) %>%
   collect()
   
-vol_zip_code$dept_zip_code <- dept_zip_code_ref$`Address Zip Code`[match(vol_zip_code$DEPARTMENT_NAME, dept_zip_code_ref$`Department Name`)] 
+vol_zip_code$dept_zip_code <- dept_zip_code_ref$`Clean Address Zip Code`[match(vol_zip_code$DEPARTMENT_NAME, dept_zip_code_ref$`Department Name`)] 
 
 coordinates <- geocode_zip(vol_zip_code$dept_zip_code)
 vol_zip_code <- merge(vol_zip_code, coordinates, by.x = c("dept_zip_code"), by.y = c("zipcode"), all.x = TRUE)
@@ -678,8 +682,8 @@ overall_time_to_appt_dist_function <- function(department){
          subtitle = department,
          x = NULL, y = "% of Total Appointments Scheduled", fill = NULL)+
     theme_bw()+
-    theme(plot.title = element_text(hjust=0.5, face = "bold", size = 14),
-            plot.subtitle = element_text(hjust=0.5, size = 12, face = "italic"),
+    theme(plot.title = element_text(hjust=0.5, face = "bold", size = 16),
+            plot.subtitle = element_text(hjust=0.5, size = 14, face = "italic"),
             legend.position = "bottom",
             legend.text = element_text(size="8"),
             legend.direction = "horizontal",
@@ -688,7 +692,7 @@ overall_time_to_appt_dist_function <- function(department){
             axis.text = element_text(size="8"),
             # axis.title.x = element_blank(),
             axis.line = element_line(size = 0.3, colour = "black"))+
-    geom_text(aes(label= paste0(perc, " (", prettyNum(round(total), big.mark = ','),")")), hjust = -.1, vjust=.5, color="black", size=3, font.face = "bold")
+    geom_text(aes(label= paste0(perc, " (", prettyNum(round(total), big.mark = ','),")")), hjust = -.1, vjust=.5, color="black", size=4, font.face = "bold")
   
   return(graph)
   
@@ -708,6 +712,10 @@ wait_time_data <- scheduling_data_raw %>%
   mutate(New.PT2  = ifelse(VISIT_GROUP_NUM == 4, 'New', 'Established')) %>%
   collect() 
 
+wait_time_data <- wait_time_data %>%
+  rename(Campus = SITE)
+
+invisible(gc())
 
 wait_time_mshs <- wait_time_data %>%
   mutate(New.PT2  = ifelse(is.na(New.PT2), 'Established', New.PT2)) %>%
@@ -731,10 +739,10 @@ wait_time_dept <- wait_time_data %>%
        mutate(Appt.Made.Year = year(APPT_MADE_DTTM),
               Appt.Made.MonNum = month(APPT_MADE_DTTM),
               Appt.Made.YearQtr = as.yearqtr(as.Date(paste0(Appt.Made.Year,"-",Appt.Made.MonNum,"-01"), "%Y-%m-%d"))) %>%
-       filter(Campus.Specialty == department) %>%
        filter(Appt.Made.YearQtr %in% c(data_quarters[length(data_quarters)])) %>%
        filter(Wait.Time >= 0) %>%
        filter(New.PT2 == "New") %>%
+       group_by(Campus.Specialty) %>%
        summarise(med_waitTime = median(Wait.Time))
 
 ```
@@ -771,8 +779,8 @@ site_time_to_appt_function <- function(department){
          x = NULL, y = "Median Days", fill = "Site",
          caption = "*Target: 14 days")+
     theme_bw()+
-    theme(plot.title = element_text(hjust=0.5, face = "bold", size = 14),
-          plot.subtitle = element_text(hjust=0.5, size = 12, face = "italic"),
+    theme(plot.title = element_text(hjust=0.5, face = "bold", size = 16),
+          plot.subtitle = element_text(hjust=0.5, size = 14, face = "italic"),
           plot.caption = element_text(size = 8, face = "bold.italic", color = "red"),
             legend.position = "bottom",
             legend.text = element_text(size="8"),
@@ -782,7 +790,7 @@ site_time_to_appt_function <- function(department){
             axis.text = element_text(size="8"),
             # axis.title.x = element_blank(),
             axis.line = element_line(size = 0.3, colour = "black"))+
-    geom_text(aes(label= ifelse(med_wait == 0, "", round(med_wait))), hjust = -.1, vjust=.5, color="black", size=3, font.face = "bold")
+    geom_text(aes(label= ifelse(med_wait == 0, "", round(med_wait))), hjust = -.1, vjust=.5, color="black", size=4, font.face = "bold")
   
   return(graph)
     
@@ -824,6 +832,20 @@ arrived_data_source <- paste0("Data Source: EPIC - Arrived Visits from ", report
                               "; includes ", paste(inc_sites, collapse = ", "))
 scheduled_data_source <- paste0("Data Source: EPIC - Scheduled Visits from ", reporting_start, " to ", reporting_end,
                                 "; includes ", paste(inc_sites, collapse = ", "))
+
+```
+
+
+```{r Manual Run of Graphs, echo = FALSE, warning = FALSE, message = FALSE}
+
+dept_list <- reporting_specialties
+
+for(i in dept_list){
+  # print(dept_quarterly_vol_function(i))
+  # print(overall_time_to_appt_dist_function(i))
+  # print(site_time_to_appt_function(i))
+  print(dept_access_takeaway(i))
+}
 
 ```
 
